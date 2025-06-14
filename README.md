@@ -1,9 +1,10 @@
 
 
-![LRGEX Logo](https://download.lrgex.com/Light%20Full%20logo.png)
-
+<div align="center">
+<img src="https://download.lrgex.com/Dark%20Full%20Logo.png" alt="LRGEX Logo" width="300">
 
 # OneDrive Junction Sync Tool
+</div>
 ## Overview
 
 The LRGEX OneDrive Junction Sync Tool is a professional PowerShell application that creates NTFS junction points to sync local folders with OneDrive. This tool provides automatic backup protection for important directories by creating junction links that redirect folder contents to OneDrive while maintaining their original paths.

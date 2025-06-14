@@ -50,8 +50,7 @@ function Get-WebAsset {
         [string]$LocalFileName,
         [int]$MaxAgeHours = 24
     )
-    
-    try {
+      try {
         $oneDriveRoot = Get-OneDrivePath
         $cacheDir = Join-Path $oneDriveRoot "LRGEX-saves\.cache"
         $localPath = Join-Path $cacheDir $LocalFileName
@@ -177,11 +176,13 @@ function Get-OneDrivePath {
             $regPath = "HKCU:\Software\Microsoft\OneDrive"
             $od = (Get-ItemProperty -Path $regPath -ErrorAction Stop).UserFolder
         } catch {
-            [System.Windows.Forms.MessageBox]::Show("Could not locate OneDrive folder.`nPlease ensure OneDrive is installed and running.","Error","OK","Error")
-            exit
+            # If OneDrive is not installed, use local Documents folder
+            $od = [Environment]::GetFolderPath("MyDocuments")
         }
     }
-    return $od
+    
+    # Always use Documents subfolder for LRGEX-saves
+    return Join-Path $od "Documents"
 }
 
 function Get-ConfigPath {
@@ -229,8 +230,7 @@ if ($AutoRestore) {
         # Smart check: Only restore if junctions are actually missing or broken
         $needsRestore = $false
         $oneDriveRoot = Get-OneDrivePath
-        
-        foreach ($junction in $config.Junctions) {
+          foreach ($junction in $config.Junctions) {
             $sourcePath = $junction.SourcePath
             $targetRelPath = $junction.TargetRelativePath
             $fullTargetFolder = Join-Path $oneDriveRoot "LRGEX-saves\$targetRelPath"

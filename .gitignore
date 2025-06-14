@@ -1,0 +1,11 @@
+# LRGEX Project .gitignore
+# Ignore everything except the main script
+
+# Ignore everything by default
+*
+
+# Allow only the main script
+!onedrivesync.ps1
+
+# Allow this gitignore file
+!.gitignore

@@ -6,13 +6,202 @@ param(
     [switch]$AutoRestore
 )
 
+# Self-unblock to prevent security warnings
+try {
+    $currentScript = $MyInvocation.MyCommand.Path
+    if ($currentScript -and (Test-Path $currentScript)) {
+        Unblock-File -Path $currentScript -ErrorAction SilentlyContinue
+    }
+} catch { 
+    # Ignore errors - file may already be unblocked
+}
+
+# Get raw OneDrive path - we want Documents folder, not OneDrive root!
+function Get-OneDrivePathRaw {
+    # Try environment variable first
+    $od = $Env:OneDrive
+    if ([string]::IsNullOrEmpty($od)) {
+        # Fallback to registry
+        try {
+            $regPath = "HKCU:\Software\Microsoft\OneDrive"
+            $od = (Get-ItemProperty -Path $regPath -ErrorAction Stop).UserFolder
+        } catch {
+            # If OneDrive is not installed, use local Documents folder
+            $od = [Environment]::GetFolderPath("MyDocuments")
+        }
+    }
+    
+    # We want to use Documents subfolder for LRGEX-saves, not OneDrive root
+    return Join-Path $od "Documents"
+}
+
+# Self-copy to LRGEX-saves and relaunch if not already there
+function Test-AndRelocateScript {
+    # Get current script path - handle different execution contexts
+    $currentPath = $null
+    
+    # Method 1: Try $PSCommandPath (works when script is executed as file)
+    if ($PSCommandPath -and (Test-Path $PSCommandPath)) {
+        $currentPath = $PSCommandPath
+    }
+    # Method 2: Try $MyInvocation.MyCommand.Path
+    elseif ($MyInvocation.MyCommand.Path -and (Test-Path $MyInvocation.MyCommand.Path)) {
+        $currentPath = $MyInvocation.MyCommand.Path
+    }
+    # Method 3: Try call stack
+    else {
+        try {
+            $callStack = Get-PSCallStack
+            foreach ($frame in $callStack) {
+                if ($frame.ScriptName -and (Test-Path $frame.ScriptName) -and $frame.ScriptName.EndsWith(".ps1")) {
+                    $currentPath = $frame.ScriptName
+                    break
+                }
+            }
+        } catch { }
+    }
+    
+    # Method 4: Fallback - search for the script in common locations
+    if ([string]::IsNullOrEmpty($currentPath) -or !(Test-Path $currentPath)) {
+        $scriptName = "onedrivesync.ps1"
+        $searchPaths = @(
+            "c:\Users\lrg4you\Desktop\LRGEX-saves\$scriptName",
+            "c:\Users\lrg4you\OneDrive\Documents\LRGEX-saves\$scriptName",
+            (Join-Path $pwd $scriptName),
+            (Join-Path ([Environment]::GetFolderPath("Desktop")) "LRGEX-saves\$scriptName")
+        )
+        
+        foreach ($path in $searchPaths) {
+            if (Test-Path $path) {
+                $currentPath = $path
+                break
+            }
+        }
+    }
+    
+    # If we still can't get the path, skip relocation
+    if ([string]::IsNullOrEmpty($currentPath) -or !(Test-Path $currentPath)) {
+        Write-Host "Could not determine current script path, skipping relocation" -ForegroundColor Yellow
+        return
+    }    
+    $documentsPath = Get-OneDrivePathRaw  # Get Documents path (OneDrive\Documents)
+    $targetFolder = Join-Path $documentsPath "LRGEX-saves"
+    $targetPath = Join-Path $targetFolder "onedrivesync.ps1"
+    
+    # Check if we're already running from the target location
+    if ($currentPath -ne $targetPath) {
+        try {
+            # Create LRGEX-saves folder if it doesn't exist
+            if (-not (Test-Path $targetFolder)) {
+                New-Item -Path $targetFolder -ItemType Directory -Force | Out-Null
+            }
+            
+            # Copy script to target location
+            Copy-Item -Path $currentPath -Destination $targetPath -Force
+            
+            # Unblock the copied file to avoid security warnings
+            try {
+                Unblock-File -Path $targetPath -ErrorAction SilentlyContinue
+            } catch { }            # Verify copy was successful
+            if (Test-Path $targetPath) {
+                # Relaunch from new location with same parameters
+                $arguments = @("-ExecutionPolicy", "Bypass", "-File", "`"$targetPath`"")
+                if ($AutoRestore) { $arguments += "-AutoRestore" }
+                
+                # Check if we're already running as admin
+                $isAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")
+                
+                try {
+                    if ($isAdmin) {
+                        # Already admin, start new PowerShell process normally
+                        $process = Start-Process -FilePath "PowerShell.exe" -ArgumentList $arguments -WindowStyle Hidden -PassThru
+                    } else {
+                        # Not admin, request elevation
+                        $process = Start-Process -FilePath "PowerShell.exe" -ArgumentList $arguments -Verb RunAs -WindowStyle Hidden -PassThru
+                    }
+                    
+                    # Wait a moment to ensure the new process starts
+                    Start-Sleep -Milliseconds 500
+                    
+                    # Exit this instance
+                    exit
+                } catch {
+                    # If Start-Process fails, try the fallback method
+                    $psi = New-Object System.Diagnostics.ProcessStartInfo
+                    $psi.FileName = "PowerShell.exe"
+                    $psi.Arguments = "-ExecutionPolicy Bypass -File `"$targetPath`"" + $(if ($AutoRestore) { " -AutoRestore" })
+                    
+                    if ($isAdmin) {
+                        $psi.WindowStyle = [System.Diagnostics.ProcessWindowStyle]::Hidden
+                        $psi.CreateNoWindow = $true
+                    } else {
+                        $psi.Verb = "runas"
+                        $psi.WindowStyle = [System.Diagnostics.ProcessWindowStyle]::Hidden
+                        $psi.CreateNoWindow = $true
+                    }
+                    
+                    [System.Diagnostics.Process]::Start($psi) | Out-Null
+                    exit
+                }
+            }
+        } catch {
+            # If copy fails, continue with current location
+        }
+    }
+}
+
+# Call self-relocation check BEFORE admin check
+Test-AndRelocateScript
+
 # Check if running as administrator, if not, restart as admin
 if (-NOT ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")) {
     # Relaunch as administrator with hidden window from the start
     try {
+        # Get the current script path using same detection method as relocation function
+        $scriptPath = $null
+        if ($PSCommandPath -and (Test-Path $PSCommandPath)) {
+            $scriptPath = $PSCommandPath
+        } elseif ($MyInvocation.MyCommand.Path -and (Test-Path $MyInvocation.MyCommand.Path)) {
+            $scriptPath = $MyInvocation.MyCommand.Path
+        } else {
+            # Try call stack
+            try {
+                $callStack = Get-PSCallStack
+                foreach ($frame in $callStack) {
+                    if ($frame.ScriptName -and (Test-Path $frame.ScriptName) -and $frame.ScriptName.EndsWith(".ps1")) {
+                        $scriptPath = $frame.ScriptName
+                        break
+                    }
+                }
+            } catch { }
+            
+            # Fallback search
+            if ([string]::IsNullOrEmpty($scriptPath)) {
+                $scriptName = "onedrivesync.ps1"
+                $searchPaths = @(
+                    "c:\Users\lrg4you\Desktop\LRGEX-saves\$scriptName",
+                    "c:\Users\lrg4you\OneDrive\Documents\LRGEX-saves\$scriptName",
+                    (Join-Path $pwd $scriptName),
+                    (Join-Path ([Environment]::GetFolderPath("Desktop")) "LRGEX-saves\$scriptName")
+                )
+                
+                foreach ($path in $searchPaths) {
+                    if (Test-Path $path) {
+                        $scriptPath = $path
+                        break
+                    }
+                }
+            }
+        }
+        
+        if ([string]::IsNullOrEmpty($scriptPath)) {
+            # If we still can't find the script, exit
+            exit
+        }
+        
         $psi = New-Object System.Diagnostics.ProcessStartInfo
         $psi.FileName = "PowerShell.exe"
-        $psi.Arguments = "-ExecutionPolicy Bypass -File `"$($MyInvocation.MyCommand.Path)`" $(if ($AutoRestore) { '-AutoRestore' })"
+        $psi.Arguments = "-ExecutionPolicy Bypass -File `"$scriptPath`" $(if ($AutoRestore) { '-AutoRestore' })"
         $psi.Verb = "runas"
         $psi.WindowStyle = [System.Diagnostics.ProcessWindowStyle]::Hidden
         $psi.CreateNoWindow = $true
@@ -168,21 +357,8 @@ function Add-LogoPanel {
 }
 
 function Get-OneDrivePath {
-    # Try environment variable first
-    $od = $Env:OneDrive
-    if ([string]::IsNullOrEmpty($od)) {
-        # Fallback to registry
-        try {
-            $regPath = "HKCU:\Software\Microsoft\OneDrive"
-            $od = (Get-ItemProperty -Path $regPath -ErrorAction Stop).UserFolder
-        } catch {
-            # If OneDrive is not installed, use local Documents folder
-            $od = [Environment]::GetFolderPath("MyDocuments")
-        }
-    }
-    
-    # Always use Documents subfolder for LRGEX-saves
-    return Join-Path $od "Documents"
+    # Return Documents path where LRGEX-saves should be located
+    return Get-OneDrivePathRaw
 }
 
 function Get-ConfigPath {
@@ -233,7 +409,7 @@ if ($AutoRestore) {
           foreach ($junction in $config.Junctions) {
             $sourcePath = $junction.SourcePath
             $targetRelPath = $junction.TargetRelativePath
-            $fullTargetFolder = Join-Path $oneDriveRoot "LRGEX-saves\$targetRelPath"
+            $fullTargetFolder = Join-Path $oneDriveRoot $targetRelPath
             $linkName = Split-Path -Path $sourcePath -Leaf
             $junctionPath = Join-Path $fullTargetFolder $linkName
             
@@ -241,16 +417,21 @@ if ($AutoRestore) {
             if (-not (Test-Path $junctionPath)) {
                 $needsRestore = $true
                 break
-            }
-            
-            # Check if junction points to wrong location
+            }            # Check if junction points to wrong location
             try {
                 $dirInfo = Get-Item $junctionPath -Force
                 if ($dirInfo.Attributes -band [System.IO.FileAttributes]::ReparsePoint) {
                     $fsutil = cmd /c "fsutil reparsepoint query `"$junctionPath`"" 2>$null
-                    if ($fsutil -match "Print Name:\s*(.+)") {
-                        $existingTarget = $matches[1].Trim()
-                        if ($existingTarget -ne $sourcePath) {
+                    # Ensure fsutil output exists and is not null/empty before regex matching
+                    if ($fsutil -and ($fsutil | Out-String).Trim() -ne "") {
+                        $fsutilText = $fsutil | Out-String
+                        if ($fsutilText -match "Print Name:\s*(.+)") {
+                            $existingTarget = $matches[1].Trim()
+                            if ($existingTarget -ne $sourcePath) {
+                                $needsRestore = $true
+                                break
+                            }
+                        } else {
                             $needsRestore = $true
                             break
                         }
@@ -268,8 +449,7 @@ if ($AutoRestore) {
                 break
             }
         }
-        
-        # Only restore if actually needed
+          # Only restore if actually needed
         if ($needsRestore) {
             foreach ($junction in $config.Junctions) {
                 try {
@@ -282,26 +462,28 @@ if ($AutoRestore) {
                     }
                     
                     # Create target folder in OneDrive if needed
-                    $fullTargetFolder = Join-Path $oneDriveRoot "LRGEX-saves\$targetRelPath"
+                    $fullTargetFolder = Join-Path $oneDriveRoot $targetRelPath
                     if (-not (Test-Path $fullTargetFolder)) {
                         New-Item -Path $fullTargetFolder -ItemType Directory -Force | Out-Null
                     }
                     
                     # Create junction
                     $linkName = Split-Path -Path $sourcePath -Leaf
-                    $junctionPath = Join-Path $fullTargetFolder $linkName
-                    
-                    # Only create if it doesn't exist or is invalid
+                    $junctionPath = Join-Path $fullTargetFolder $linkName                    # Only create if it doesn't exist or is invalid
                     $needsCreation = $true
                     if (Test-Path $junctionPath) {
                         try {
                             $dirInfo = Get-Item $junctionPath -Force
                             if ($dirInfo.Attributes -band [System.IO.FileAttributes]::ReparsePoint) {
                                 $fsutil = cmd /c "fsutil reparsepoint query `"$junctionPath`"" 2>$null
-                                if ($fsutil -match "Print Name:\s*(.+)") {
-                                    $existingTarget = $matches[1].Trim()
-                                    if ($existingTarget -eq $sourcePath) {
-                                        $needsCreation = $false
+                                # Ensure fsutil output exists and is not null/empty before regex matching
+                                if ($fsutil -and ($fsutil | Out-String).Trim() -ne "") {
+                                    $fsutilText = $fsutil | Out-String
+                                    if ($fsutilText -match "Print Name:\s*(.+)") {
+                                        $existingTarget = $matches[1].Trim()
+                                        if ($existingTarget -eq $sourcePath) {
+                                            $needsCreation = $false
+                                        }
                                     }
                                 }
                             }
@@ -368,11 +550,10 @@ function Export-JunctionConfig {
         [System.Windows.Forms.MessageBox]::Show("No junction configurations to export.","No Config","OK","Information")
         return
     }
-    
-    $saveDialog = New-Object System.Windows.Forms.SaveFileDialog
+      $saveDialog = New-Object System.Windows.Forms.SaveFileDialog
     $saveDialog.Filter = "JSON files (*.json)|*.json|All files (*.*)|*.*"
     $saveDialog.Title = "Export Junction Configuration"
-    $saveDialog.FileName = "junction-config-backup.json"
+    $saveDialog.FileName = "junction-config.json"
     
     if ($saveDialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
         try {
@@ -385,7 +566,8 @@ function Export-JunctionConfig {
 }
 
 function Import-JunctionConfig {
-    $openDialog = New-Object System.Windows.Forms.OpenFileDialog    $openDialog.Filter = "JSON files (*.json)|*.json|All files (*.*)|*.*"
+    $openDialog = New-Object System.Windows.Forms.OpenFileDialog
+    $openDialog.Filter = "JSON files (*.json)|*.json|All files (*.*)|*.*"
     $openDialog.Title = "Import Junction Configuration"
     
     if ($openDialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
@@ -436,14 +618,14 @@ function Test-JunctionHealth {
         [System.Windows.Forms.MessageBox]::Show("No junction configurations found to check.","No Config","OK","Information")
         return
     }
-    
-    # Create health check form
+      # Create health check form
     $healthForm = New-Object System.Windows.Forms.Form
     $healthForm.Text = "Junction Health Check"
     $healthForm.Size = New-Object System.Drawing.Size(700,500)
     $healthForm.StartPosition = "CenterScreen"
     $healthForm.FormBorderStyle = 'FixedDialog'
     $healthForm.MaximizeBox = $false
+    $healthForm.TopMost = $true
     
     # Results text box
     $resultsText = New-Object System.Windows.Forms.TextBox
@@ -473,12 +655,11 @@ function Test-JunctionHealth {
     $healthy = 0
     $broken = 0
     $missing = 0
-    
-    foreach ($junction in $config.Junctions) {
+      foreach ($junction in $config.Junctions) {
         $sourcePath = $junction.SourcePath
         $targetRelPath = $junction.TargetRelativePath
         $oneDriveRoot = Get-OneDrivePath
-        $fullTargetFolder = Join-Path $oneDriveRoot "LRGEX-saves\$targetRelPath"
+        $fullTargetFolder = Join-Path $oneDriveRoot $targetRelPath
         $linkName = Split-Path -Path $sourcePath -Leaf
         $junctionPath = Join-Path $fullTargetFolder $linkName
         
@@ -487,23 +668,29 @@ function Test-JunctionHealth {
         if (-not (Test-Path $junctionPath)) {
             $results += "  [ERROR] MISSING: Junction not found at $junctionPath"
             $missing++
-        } else {
-            # Check if it's a valid junction
+        } else {            # Check if it's a valid junction
             try {
                 $dirInfo = Get-Item $junctionPath -Force
                 if ($dirInfo.Attributes -band [System.IO.FileAttributes]::ReparsePoint) {
                     $fsutil = cmd /c "fsutil reparsepoint query `"$junctionPath`"" 2>$null
-                    if ($fsutil -match "Print Name:\s*(.+)") {
-                        $existingTarget = $matches[1].Trim()
-                        if ($existingTarget -eq $sourcePath) {
-                            $results += "  [OK] HEALTHY: Junction points correctly to $sourcePath"
-                            $healthy++
+                    # Ensure fsutil output exists and is not null/empty before regex matching
+                    if ($fsutil -and ($fsutil | Out-String).Trim() -ne "") {
+                        $fsutilText = $fsutil | Out-String
+                        if ($fsutilText -match "Print Name:\s*(.+)") {
+                            $existingTarget = $matches[1].Trim()
+                            if ($existingTarget -eq $sourcePath) {
+                                $results += "  [OK] HEALTHY: Junction points correctly to $sourcePath"
+                                $healthy++
+                            } else {
+                                $results += "  [WARN] BROKEN: Junction points to wrong location: $existingTarget"
+                                $broken++
+                            }
                         } else {
-                            $results += "  [WARN] BROKEN: Junction points to wrong location: $existingTarget"
+                            $results += "  [ERROR] BROKEN: Cannot determine junction target"
                             $broken++
                         }
                     } else {
-                        $results += "  [ERROR] BROKEN: Cannot determine junction target"
+                        $results += "  [ERROR] BROKEN: fsutil returned no output"
                         $broken++
                     }
                 } else {
@@ -513,7 +700,7 @@ function Test-JunctionHealth {
             } catch {
                 $results += "  [ERROR] ERROR: Cannot check junction: $_"
                 $broken++
-            }        }
+            }}
         $results += ""
     }
     
@@ -544,9 +731,35 @@ function Set-AutoRestoreSettings {
     } catch {
         # Ignore save errors
     }
+      $taskName = "OneDriveJunctionRestore"
     
-    $taskName = "OneDriveJunctionRestore"
-    $scriptPath = $MyInvocation.MyCommand.Path
+    # Get script path using same detection method
+    $scriptPath = $null
+    if ($PSCommandPath -and (Test-Path $PSCommandPath)) {
+        $scriptPath = $PSCommandPath
+    } elseif ($MyInvocation.MyCommand.Path -and (Test-Path $MyInvocation.MyCommand.Path)) {
+        $scriptPath = $MyInvocation.MyCommand.Path
+    } else {
+        # Try call stack
+        try {
+            $callStack = Get-PSCallStack
+            foreach ($frame in $callStack) {
+                if ($frame.ScriptName -and (Test-Path $frame.ScriptName) -and $frame.ScriptName.EndsWith(".ps1")) {
+                    $scriptPath = $frame.ScriptName
+                    break
+                }
+            }
+        } catch { }
+        
+        # Fallback search for LRGEX-saves location
+        if ([string]::IsNullOrEmpty($scriptPath)) {
+            $documentsPath = Get-OneDrivePathRaw
+            $lrgexPath = Join-Path $documentsPath "LRGEX-saves\onedrivesync.ps1"
+            if (Test-Path $lrgexPath) {
+                $scriptPath = $lrgexPath
+            }
+        }
+    }
       try {
         if ($Enable) {
             # Create scheduled task for startup with smart conditions
@@ -581,14 +794,14 @@ function Remove-JunctionDialog {
         [System.Windows.Forms.MessageBox]::Show("No junction configurations found to remove.","No Config","OK","Information")
         return
     }
-    
-    # Create remove form
+      # Create remove form
     $removeForm = New-Object System.Windows.Forms.Form
     $removeForm.Text = "Remove Junctions"
     $removeForm.Size = New-Object System.Drawing.Size(600,450)
     $removeForm.StartPosition = "CenterScreen"
     $removeForm.FormBorderStyle = 'FixedDialog'
     $removeForm.MaximizeBox = $false
+    $removeForm.TopMost = $true
     
     # Instructions label
     $lblInstructions = New-Object System.Windows.Forms.Label
@@ -603,9 +816,8 @@ function Remove-JunctionDialog {
     $checkedList.Location = New-Object System.Drawing.Point(10,45)
     $checkedList.Size = New-Object System.Drawing.Size(570,250)
     $checkedList.CheckOnClick = $true
-    
-    foreach ($junction in $config.Junctions) {
-        $displayText = "$($junction.SourcePath) → LRGEX-saves\$($junction.TargetRelativePath)"
+      foreach ($junction in $config.Junctions) {
+        $displayText = "$($junction.SourcePath) → $($junction.TargetRelativePath)"
         $checkedList.Items.Add($displayText, $false)  # Default to unchecked for safety
     }
     $removeForm.Controls.Add($checkedList)
@@ -654,10 +866,9 @@ function Remove-JunctionDialog {
                 $junction = $config.Junctions[$i]
                 $sourcePath = $junction.SourcePath
                 $targetRelPath = $junction.TargetRelativePath
-                
-                try {
+                  try {
                     # Calculate junction path
-                    $fullTargetFolder = Join-Path $oneDriveRoot "LRGEX-saves\$targetRelPath"
+                    $fullTargetFolder = Join-Path $oneDriveRoot $targetRelPath
                     $linkName = Split-Path -Path $sourcePath -Leaf
                     $junctionPath = Join-Path $fullTargetFolder $linkName
                     
@@ -713,14 +924,14 @@ function Show-RestoreDialog {
         [System.Windows.Forms.MessageBox]::Show("No saved junction configurations found.","No Config","OK","Information")
         return
     }
-    
-    # Create restore form
+      # Create restore form
     $restoreForm = New-Object System.Windows.Forms.Form
     $restoreForm.Text = "Restore Saved Junctions"
     $restoreForm.Size = New-Object System.Drawing.Size(600,450)
     $restoreForm.StartPosition = "CenterScreen"
     $restoreForm.FormBorderStyle = 'FixedDialog'
     $restoreForm.MaximizeBox = $false
+    $restoreForm.TopMost = $true
     
     # Instructions label
     $lblInstructions = New-Object System.Windows.Forms.Label
@@ -734,9 +945,8 @@ function Show-RestoreDialog {
     $checkedList.Location = New-Object System.Drawing.Point(10,45)
     $checkedList.Size = New-Object System.Drawing.Size(570,250)
     $checkedList.CheckOnClick = $true
-    
-    foreach ($junction in $config.Junctions) {
-        $displayText = "$($junction.SourcePath) → LRGEX-saves\$($junction.TargetRelativePath)"
+      foreach ($junction in $config.Junctions) {
+        $displayText = "$($junction.SourcePath) → $($junction.TargetRelativePath)"
         $checkedList.Items.Add($displayText, $true)
     }
     $restoreForm.Controls.Add($checkedList)
@@ -805,9 +1015,8 @@ function Show-RestoreDialog {
                     if (-not (Test-Path $sourcePath)) {
                         New-Item -Path $sourcePath -ItemType Directory -Force | Out-Null
                     }
-                    
-                    # Create target folder in OneDrive if needed
-                    $fullTargetFolder = Join-Path $oneDriveRoot "LRGEX-saves\$targetRelPath"
+                      # Create target folder in OneDrive if needed
+                    $fullTargetFolder = Join-Path $oneDriveRoot $targetRelPath
                     if (-not (Test-Path $fullTargetFolder)) {
                         New-Item -Path $fullTargetFolder -ItemType Directory -Force | Out-Null
                     }
@@ -821,12 +1030,15 @@ function Show-RestoreDialog {
                         # Check if it's actually a junction pointing to the right place
                         $existingTarget = $null
                         try {
-                            $dirInfo = Get-Item $junctionPath -Force
-                            if ($dirInfo.Attributes -band [System.IO.FileAttributes]::ReparsePoint) {
+                            $dirInfo = Get-Item $junctionPath -Force                            if ($dirInfo.Attributes -band [System.IO.FileAttributes]::ReparsePoint) {
                                 # It's a junction/reparse point, check if it points to our source
                                 $fsutil = cmd /c "fsutil reparsepoint query `"$junctionPath`"" 2>$null
-                                if ($fsutil -match "Print Name:\s*(.+)") {
-                                    $existingTarget = $matches[1].Trim()
+                                # Ensure fsutil output exists and is not null/empty before regex matching
+                                if ($fsutil -and ($fsutil | Out-String).Trim() -ne "") {
+                                    $fsutilText = $fsutil | Out-String
+                                    if ($fsutilText -match "Print Name:\s*(.+)") {
+                                        $existingTarget = $matches[1].Trim()
+                                    }
                                 }
                             }
                         } catch {

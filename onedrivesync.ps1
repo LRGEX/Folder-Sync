@@ -518,8 +518,17 @@ function Save-JunctionConfig {
     }
     
     # Remove existing entry with same source path
-    $config.Junctions = $config.Junctions | Where-Object { $_.SourcePath -ne $sourcePath }
-    $config.Junctions += $newJunction
+    $filteredJunctions = $config.Junctions | Where-Object { $_.SourcePath -ne $sourcePath }
+    
+    # Convert to proper array and add new junction
+    $junctionArray = @()
+    if ($filteredJunctions) {
+        $junctionArray += $filteredJunctions
+    }
+    $junctionArray += $newJunction
+    
+    # Update config with new array
+    $config.Junctions = $junctionArray
     
     # Save config
     try {
@@ -582,23 +591,26 @@ function Import-JunctionConfig {
                     Junctions = $importedConfig
                 }
             }
-            
-            # Merge configurations (imported takes precedence)
-            $mergedConfig = @{
-                AutoRestoreEnabled = $importedConfig.AutoRestoreEnabled
-                Junctions = @()
-            }
+              # Merge configurations (imported takes precedence)
+            $mergedJunctions = @()
             
             $importedPaths = $importedConfig.Junctions | ForEach-Object { $_.SourcePath }
             
             # Add imported configs
-            $mergedConfig.Junctions += $importedConfig.Junctions
+            if ($importedConfig.Junctions) {
+                $mergedJunctions += $importedConfig.Junctions
+            }
             
             # Add current configs that don't conflict
             $currentConfig.Junctions | ForEach-Object {
                 if ($_.SourcePath -notin $importedPaths) {
-                    $mergedConfig.Junctions += $_
+                    $mergedJunctions += $_
                 }
+            }
+            
+            $mergedConfig = @{
+                AutoRestoreEnabled = $importedConfig.AutoRestoreEnabled
+                Junctions = $mergedJunctions
             }
             
             # Save merged config
@@ -853,13 +865,12 @@ function Remove-JunctionDialog {
           if ($confirmResult -ne [System.Windows.Forms.DialogResult]::Yes) {
             return
         }
-        
-        $oneDriveRoot = Get-OneDrivePath
+          $oneDriveRoot = Get-OneDrivePath
         $removed = 0
         $errors = 0
         $configPath = Get-ConfigPath
         $updatedConfig = Get-JunctionConfig
-        $updatedConfig.Junctions = @()
+        $keptJunctions = @()
         
         for ($i = 0; $i -lt $checkedList.Items.Count; $i++) {
             if ($checkedList.GetItemChecked($i)) {
@@ -881,9 +892,12 @@ function Remove-JunctionDialog {
                     $errors++
                 }            } else {
                 # Keep this junction in config
-                $updatedConfig.Junctions += $config.Junctions[$i]
+                $keptJunctions += $config.Junctions[$i]
             }
         }
+        
+        # Update config with kept junctions
+        $updatedConfig.Junctions = $keptJunctions
         
         # Save updated configuration
         try {
@@ -1396,10 +1410,22 @@ $btnCreate.Add_Click({
     $sourcePath = $textSource.Text.Trim()
     $targetRelPath = $textTarget.Text.Trim()
 
+    # Remove quotes if present in the path and normalize
+    $sourcePath = $sourcePath.Trim('"').Trim("'").Trim()
+    
+    # Debug: Show what path we're actually testing
+    Write-Host "Testing path: '$sourcePath'"
+    
     # Validate source path
+    if ([string]::IsNullOrWhiteSpace($sourcePath)) {
+        $statusLabel.ForeColor = [System.Drawing.Color]::Red
+        $statusLabel.Text = "[ERROR] Please enter a source folder path."
+        return
+    }
+    
     if (-not (Test-Path -Path $sourcePath -PathType Container)) {
         $statusLabel.ForeColor = [System.Drawing.Color]::Red
-        $statusLabel.Text = "[ERROR] Source folder does not exist."
+        $statusLabel.Text = "[ERROR] Source folder does not exist:`n'$sourcePath'"
         return
     }
 

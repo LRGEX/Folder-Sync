@@ -560,7 +560,7 @@ function Sync-PairToCloud {
         $cloud = Get-PairCloudPath -SourcePath $SourcePath -TargetRelativePath $TargetRelativePath
         $parent = Split-Path $cloud -Parent
         if (-not (Test-Path $parent)) { New-Item -ItemType Directory -Path $parent -Force | Out-Null }
-        robocopy.exe "$SourcePath" "$cloud" /E /XJ /NFL /NDL /NJH /NJS /NP /R:1 /W:1 | Out-Null
+        robocopy.exe "$SourcePath" "$cloud" /E /XJ /NFL /NDL /NJH /NJS /NP /R:5 /W:5 | Out-Null
         return ($LASTEXITCODE -lt 8)
     } catch { return $false }
 }
@@ -579,7 +579,7 @@ function Restore-PairFromCloud {
         $cloud = Get-PairCloudPath -SourcePath $SourcePath -TargetRelativePath $TargetRelativePath
         if (-not (Test-Path $cloud)) { return $false }
         if (-not (Test-Path $SourcePath)) { New-Item -ItemType Directory -Path $SourcePath -Force | Out-Null }
-        robocopy.exe "$cloud" "$SourcePath" /E /XJ /NFL /NDL /NJH /NJS /NP /R:1 /W:1 | Out-Null
+        robocopy.exe "$cloud" "$SourcePath" /E /XJ /NFL /NDL /NJH /NJS /NP /R:5 /W:5 | Out-Null
         return ($LASTEXITCODE -lt 8)
     } catch { return $false }
 }
@@ -1462,25 +1462,28 @@ $disableSchedulingItem.Add_Click({ Set-AutoRestoreSettings -Enable $false })
 $schedulingMenu.DropDownItems.Add($enableSchedulingItem)
 $schedulingMenu.DropDownItems.Add($disableSchedulingItem)
 
+# Right-click sync: a single STATE-AWARE toggle. Label + action reflect whether it's on,
+# and the label refreshes every time the Tools menu opens (always shows live state).
+function Test-RightClickMenuEnabled {
+    [bool](Test-Path 'HKCU:\Software\Classes\Directory\shell\LRGEXSync')
+}
+function Update-RightClickMenuLabel {
+    if (Test-RightClickMenuEnabled) { $rcMenu.Text = "Right-Click Sync: ON   (click to disable)" }
+    else { $rcMenu.Text = "Right-Click Sync: OFF   (click to enable)" }
+}
+
 $rcMenu = New-Object System.Windows.Forms.ToolStripMenuItem
-$rcMenu.Text = "Right-Click Sync"
 $rcMenu.BackColor = [System.Drawing.Color]::FromArgb(45, 45, 45)
 $rcMenu.ForeColor = [System.Drawing.Color]::White
-
-$enableRCItem = New-Object System.Windows.Forms.ToolStripMenuItem
-$enableRCItem.Text = "Enable 'Sync folder' on right-click"
-$enableRCItem.BackColor = [System.Drawing.Color]::FromArgb(45, 45, 45)
-$enableRCItem.ForeColor = [System.Drawing.Color]::White
-$enableRCItem.Add_Click({ Set-RightClickMenu -Enable $true })
-
-$disableRCItem = New-Object System.Windows.Forms.ToolStripMenuItem
-$disableRCItem.Text = "Disable right-click"
-$disableRCItem.BackColor = [System.Drawing.Color]::FromArgb(45, 45, 45)
-$disableRCItem.ForeColor = [System.Drawing.Color]::White
-$disableRCItem.Add_Click({ Set-RightClickMenu -Enable $false })
-
-$rcMenu.DropDownItems.Add($enableRCItem)
-$rcMenu.DropDownItems.Add($disableRCItem)
+$rcMenu.Add_Click({
+    # Toggle based on the CURRENT state, then refresh the label.
+    if (Test-RightClickMenuEnabled) { Set-RightClickMenu -Enable $false }
+    else { Set-RightClickMenu -Enable $true }
+    Update-RightClickMenuLabel
+})
+Update-RightClickMenuLabel   # initial label from current state
+# Keep the label fresh whenever the Tools menu is opened.
+$toolsMenu.Add_DropDownOpening({ Update-RightClickMenuLabel })
 
 $toolsMenu.DropDownItems.Add($healthCheckItem)
 $toolsMenu.DropDownItems.Add($removeItem)

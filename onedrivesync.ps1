@@ -1,9 +1,11 @@
-# OneDrive Folder Sync via Junction Tool
-# Automatically backed up in OneDrive for PC formatting protection
+# LRGEX Junction Sync Tool
+# Backs up folders to your chosen sync home so they survive a PC format
 # Features: Create junctions, save configurations, restore after PC format
 
 param(
-    [switch]$AutoRestore
+    [switch]$AutoRestore,
+    [switch]$Sync,
+    [string]$Link
 )
 
 # Self-unblock to prevent security warnings
@@ -16,40 +18,103 @@ try {
     # Ignore errors - file may already be unblocked
 }
 
-# Get raw OneDrive path - we want Documents folder, not OneDrive root!
+<#
+.SYNOPSIS
+    Returns the folder the running script lives in (HOME). Cloud-agnostic.
+.DESCRIPTION
+    Everything (config, sync targets, cache) is relative to the script's OWN folder.
+    Works on any PC / any user / any cloud (or none). Nothing is hardcoded.
+.OUTPUTS [string] the script's folder path.
+#>
+function Get-ScriptDir {
+    $p = $null
+    if ($PSCommandPath -and (Test-Path $PSCommandPath)) { $p = $PSCommandPath }
+    elseif ($MyInvocation.MyCommand.Path -and (Test-Path $MyInvocation.MyCommand.Path)) { $p = $MyInvocation.MyCommand.Path }
+    else {
+        try {
+            foreach ($frame in (Get-PSCallStack)) {
+                if ($frame.ScriptName -and (Test-Path $frame.ScriptName) -and $frame.ScriptName.EndsWith('.ps1')) { $p = $frame.ScriptName; break }
+            }
+        } catch { }
+    }
+    if (-not $p) { return (Get-Location).Path }
+    return (Split-Path $p -Parent)
+}
+
+<#
+.SYNOPSIS
+    Returns $true if the script is running from its HOME folder.
+.DESCRIPTION
+    HOME = the folder containing the hidden .lrgex-home marker (created at first-run setup).
+    Marker-based so ANY folder name works - nothing hardcoded.
+#>
+function Test-IsHome {
+    return (Test-Path (Join-Path (Get-ScriptDir) '.lrgex-home'))
+}
+
+<#
+.SYNOPSIS
+    Detects a known cloud-sync root (OneDrive / Google Drive / Mega / Dropbox / iCloud) for the
+    first-run SUGGESTION only. Returns $null if none found. The tool never REQUIRES a cloud.
+#>
+function Get-CloudRootSuggestion {
+    $candidates = @()
+    if ($env:OneDrive) { $candidates += $env:OneDrive }
+    if ($env:OneDriveCommercial) { $candidates += $env:OneDriveCommercial }
+    $user = $env:USERPROFILE
+    if ($user) {
+        $candidates += (Join-Path $user 'Google Drive')
+        $candidates += (Join-Path $user 'MEGA')
+        $candidates += (Join-Path $user 'Dropbox')
+        $candidates += (Join-Path $user 'iCloudDrive')
+    }
+    foreach ($c in $candidates) {
+        if ($c -and (Test-Path $c)) { return $c }
+    }
+    return $null
+}
+
+<#
+.SYNOPSIS
+    Legacy OneDrive\Documents resolver. Kept for backward compatibility; new code uses Get-ScriptDir.
+#>
 function Get-OneDrivePathRaw {
-    # Try environment variable first
     $od = $Env:OneDrive
     if ([string]::IsNullOrEmpty($od)) {
-        # Fallback to registry
-        try {
-            $regPath = "HKCU:\Software\Microsoft\OneDrive"
-            $od = (Get-ItemProperty -Path $regPath -ErrorAction Stop).UserFolder
-        } catch {
-            # If OneDrive is not installed, use local Documents folder
-            $od = [Environment]::GetFolderPath("MyDocuments")
-        }
+        try { $od = (Get-ItemProperty -Path "HKCU:\Software\Microsoft\OneDrive" -ErrorAction Stop).UserFolder } catch { $od = $null }
     }
-    
-    # We want to use Documents subfolder for LRGEX-saves, not OneDrive root
+    if ([string]::IsNullOrEmpty($od)) { return [Environment]::GetFolderPath("MyDocuments") }
     return Join-Path $od "Documents"
 }
 
-# Self-copy to LRGEX-saves and relaunch if not already there
+<#
+.SYNOPSIS
+    Portable setup: if the script is NOT yet in its home folder, ask the user to pick ANY folder
+    (cloud strongly recommended), copy itself + create the config + drop a marker there, and
+    relaunch. If already home, do nothing.
+.DESCRIPTION
+    HOME = the folder containing the hidden .lrgex-home marker. Any folder name works - nothing
+    is hardcoded - and the tool is fully cloud-agnostic (OneDrive / Google Drive / Mega / Dropbox
+    / iCloud / or even a plain local folder).
+    - Bare GUI launch, NOT home -> ASK the user to pick the home folder (FolderBrowserDialog,
+      pre-filled with a detected cloud root if any). If the picked folder is NOT under a known
+      cloud root, show a NON-BLOCKING warning that backups won't auto-sync / survive a format,
+      then proceed anyway (the user's choice). Copy the script there, create a fresh
+      junction-config.json ONLY if one doesn't already exist (preserves post-format data), write
+      the .lrgex-home marker, then relaunch from home (elevating for the GUI) and exit.
+    - Already home -> return immediately (no prompt).
+    - Flag modes (-Sync/-AutoRestore/-Link) never prompt.
+    Universal: run it from ANY path/partition/PC and it sets itself up.
+.OUTPUTS none. May exit the process after relaunch.
+#>
 function Test-AndRelocateScript {
-    # Get current script path - handle different execution contexts
+    # --- Detect our own path (Methods 1-3, then a generic fallback search) ---
     $currentPath = $null
-    
-    # Method 1: Try $PSCommandPath (works when script is executed as file)
     if ($PSCommandPath -and (Test-Path $PSCommandPath)) {
         $currentPath = $PSCommandPath
-    }
-    # Method 2: Try $MyInvocation.MyCommand.Path
-    elseif ($MyInvocation.MyCommand.Path -and (Test-Path $MyInvocation.MyCommand.Path)) {
+    } elseif ($MyInvocation.MyCommand.Path -and (Test-Path $MyInvocation.MyCommand.Path)) {
         $currentPath = $MyInvocation.MyCommand.Path
-    }
-    # Method 3: Try call stack
-    else {
+    } else {
         try {
             $callStack = Get-PSCallStack
             foreach ($frame in $callStack) {
@@ -60,93 +125,89 @@ function Test-AndRelocateScript {
             }
         } catch { }
     }
-    
-    # Method 4: Fallback - search for the script in common locations
+    # Method 4: generic fallback search (current dir / Desktop)
     if ([string]::IsNullOrEmpty($currentPath) -or !(Test-Path $currentPath)) {
         $scriptName = "onedrivesync.ps1"
         $searchPaths = @(
-            "c:\Users\lrg4you\Desktop\LRGEX-saves\$scriptName",
-            "c:\Users\lrg4you\OneDrive\Documents\LRGEX-saves\$scriptName",
             (Join-Path $pwd $scriptName),
-            (Join-Path ([Environment]::GetFolderPath("Desktop")) "LRGEX-saves\$scriptName")
+            (Join-Path ([Environment]::GetFolderPath("Desktop")) $scriptName)
         )
-        
         foreach ($path in $searchPaths) {
-            if (Test-Path $path) {
-                $currentPath = $path
-                break
-            }
+            if (Test-Path $path) { $currentPath = $path; break }
         }
     }
-    
-    # If we still can't get the path, skip relocation
     if ([string]::IsNullOrEmpty($currentPath) -or !(Test-Path $currentPath)) {
-        Write-Host "Could not determine current script path, skipping relocation" -ForegroundColor Yellow
+        Write-Host "Could not determine current script path, skipping setup" -ForegroundColor Yellow
         return
-    }    
-    $documentsPath = Get-OneDrivePathRaw  # Get Documents path (OneDrive\Documents)
-    $targetFolder = Join-Path $documentsPath "LRGEX-saves"
-    $targetPath = Join-Path $targetFolder "onedrivesync.ps1"
-    
-    # Check if we're already running from the target location
-    if ($currentPath -ne $targetPath) {
-        try {
-            # Create LRGEX-saves folder if it doesn't exist
-            if (-not (Test-Path $targetFolder)) {
-                New-Item -Path $targetFolder -ItemType Directory -Force | Out-Null
-            }
-            
-            # Copy script to target location
-            Copy-Item -Path $currentPath -Destination $targetPath -Force
-            
-            # Unblock the copied file to avoid security warnings
-            try {
-                Unblock-File -Path $targetPath -ErrorAction SilentlyContinue
-            } catch { }            # Verify copy was successful
-            if (Test-Path $targetPath) {
-                # Relaunch from new location with same parameters
-                $arguments = @("-ExecutionPolicy", "Bypass", "-File", "`"$targetPath`"")
-                if ($AutoRestore) { $arguments += "-AutoRestore" }
-                
-                # Check if we're already running as admin
-                $isAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")
-                
-                try {
-                    if ($isAdmin) {
-                        # Already admin, start new PowerShell process normally
-                        $process = Start-Process -FilePath "PowerShell.exe" -ArgumentList $arguments -WindowStyle Hidden -PassThru
-                    } else {
-                        # Not admin, request elevation
-                        $process = Start-Process -FilePath "PowerShell.exe" -ArgumentList $arguments -Verb RunAs -WindowStyle Hidden -PassThru
-                    }
-                    
-                    # Wait a moment to ensure the new process starts
-                    Start-Sleep -Milliseconds 500
-                    
-                    # Exit this instance
-                    exit
-                } catch {
-                    # If Start-Process fails, try the fallback method
-                    $psi = New-Object System.Diagnostics.ProcessStartInfo
-                    $psi.FileName = "PowerShell.exe"
-                    $psi.Arguments = "-ExecutionPolicy Bypass -File `"$targetPath`"" + $(if ($AutoRestore) { " -AutoRestore" })
-                    
-                    if ($isAdmin) {
-                        $psi.WindowStyle = [System.Diagnostics.ProcessWindowStyle]::Hidden
-                        $psi.CreateNoWindow = $true
-                    } else {
-                        $psi.Verb = "runas"
-                        $psi.WindowStyle = [System.Diagnostics.ProcessWindowStyle]::Hidden
-                        $psi.CreateNoWindow = $true
-                    }
-                    
-                    [System.Diagnostics.Process]::Start($psi) | Out-Null
-                    exit
-                }
-            }
-        } catch {
-            # If copy fails, continue with current location
+    }
+
+    # --- Are we already HOME? (hidden .lrgex-home marker next to the script) ---
+    $dir = Split-Path $currentPath -Parent
+    if (Test-Path (Join-Path $dir '.lrgex-home')) { return }
+
+    # --- Flag modes only ever run from home; if reached from a non-home copy, just proceed. ---
+    if ($Sync -or $AutoRestore -or $Link) { return }
+
+    # --- BARE launch from a portable copy -> FIRST-RUN SETUP: pick the home folder. ---
+    Add-Type -AssemblyName System.Windows.Forms
+    $cloudRoot = Get-CloudRootSuggestion
+    $preselect = $cloudRoot
+    if (-not $preselect -or -not (Test-Path $preselect)) { $preselect = [Environment]::GetFolderPath("UserProfile") }
+
+    $fb = New-Object System.Windows.Forms.FolderBrowserDialog
+    $fb.Description = "Pick the folder where LRGEX sync will live.`n`nRECOMMENDED: a folder inside a cloud service (OneDrive, Google Drive, Mega, Dropbox, iCloud) so your backups survive a PC format and sync across machines.`n`nYou may pick ANY folder, but a non-cloud folder will NOT survive a format."
+    if (Test-Path $preselect) { $fb.SelectedPath = $preselect }
+    if ($fb.ShowDialog() -ne [System.Windows.Forms.DialogResult]::OK) { return }
+
+    $homeFolder = $fb.SelectedPath
+    # Non-blocking warning if the picked folder isn't under a known cloud root.
+    $underCloud = $false
+    if ($cloudRoot -and $homeFolder.StartsWith($cloudRoot, [System.StringComparison]::OrdinalIgnoreCase)) { $underCloud = $true }
+    if (-not $underCloud) {
+        $msg = "This folder does not appear to be inside a cloud-synced location (OneDrive / Google Drive / Mega / Dropbox / iCloud).`n`nBackups stored here will NOT sync automatically and will NOT survive a PC format.`n`nUse this folder anyway?"
+        if ([System.Windows.Forms.MessageBox]::Show($msg, "Not a cloud folder", [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Warning) -ne [System.Windows.Forms.DialogResult]::Yes) { return }
+    }
+
+    $targetPath = Join-Path $homeFolder "onedrivesync.ps1"
+    $configPath = Join-Path $homeFolder "junction-config.json"
+    $markerPath = Join-Path $homeFolder ".lrgex-home"
+
+    try {
+        # Copy the script itself into the chosen home folder
+        Copy-Item -Path $currentPath -Destination $targetPath -Force
+        try { Unblock-File -Path $targetPath -ErrorAction SilentlyContinue } catch { }
+        # Create a fresh config ONLY if one doesn't exist (preserves recovered data post-format)
+        if (-not (Test-Path $configPath)) {
+            @{ Junctions = @(); AutoRestoreEnabled = $false } | ConvertTo-Json -Depth 3 | Set-Content $configPath -Encoding UTF8
         }
+        # Drop the home marker so we recognize this folder later (any folder name works)
+        if (-not (Test-Path $markerPath)) { New-Item -Path $markerPath -ItemType File -Force | Out-Null }
+
+        # Relaunch from home (preserve -AutoRestore/-Link flags; elevate for the GUI)
+        $arguments = @("-ExecutionPolicy", "Bypass", "-File", "`"$targetPath`"")
+        if ($AutoRestore) { $arguments += "-AutoRestore" }
+        if ($Link) { $arguments += "-Link " + [char]34 + $Link + [char]34 }
+        $isAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")
+        try {
+            if ($isAdmin) {
+                Start-Process -FilePath "PowerShell.exe" -ArgumentList $arguments -WindowStyle Hidden -PassThru | Out-Null
+            } else {
+                Start-Process -FilePath "PowerShell.exe" -ArgumentList $arguments -Verb RunAs -WindowStyle Hidden -PassThru | Out-Null
+            }
+            Start-Sleep -Milliseconds 500
+            exit
+        } catch {
+            $psi = New-Object System.Diagnostics.ProcessStartInfo
+            $psi.FileName = "PowerShell.exe"
+            $psi.Arguments = "-ExecutionPolicy Bypass -File `"$targetPath`"" + $(if ($AutoRestore) { " -AutoRestore" }) + $(if ($Link) { " -Link " + [char]34 + $Link + [char]34 })
+            $psi.WindowStyle = [System.Diagnostics.ProcessWindowStyle]::Hidden
+            $psi.CreateNoWindow = $true
+            if (-not $isAdmin) { $psi.Verb = "runas" }
+            [System.Diagnostics.Process]::Start($psi) | Out-Null
+            exit
+        }
+    } catch {
+        Write-Host "Setup could not complete; continuing from current location." -ForegroundColor Yellow
     }
 }
 
@@ -154,7 +215,7 @@ function Test-AndRelocateScript {
 Test-AndRelocateScript
 
 # Check if running as administrator, if not, restart as admin
-if (-NOT ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")) {
+if (-not $Link -and -not $Sync -and -not $AutoRestore -and (-NOT ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator"))) {
     # Relaunch as administrator with hidden window from the start
     try {
         # Get the current script path using same detection method as relocation function
@@ -179,10 +240,8 @@ if (-NOT ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdent
             if ([string]::IsNullOrEmpty($scriptPath)) {
                 $scriptName = "onedrivesync.ps1"
                 $searchPaths = @(
-                    "c:\Users\lrg4you\Desktop\LRGEX-saves\$scriptName",
-                    "c:\Users\lrg4you\OneDrive\Documents\LRGEX-saves\$scriptName",
                     (Join-Path $pwd $scriptName),
-                    (Join-Path ([Environment]::GetFolderPath("Desktop")) "LRGEX-saves\$scriptName")
+                    (Join-Path ([Environment]::GetFolderPath("Desktop")) $scriptName)
                 )
                 
                 foreach ($path in $searchPaths) {
@@ -240,8 +299,7 @@ function Get-WebAsset {
         [int]$MaxAgeHours = 24
     )
       try {
-        $oneDriveRoot = Get-OneDrivePath
-        $cacheDir = Join-Path $oneDriveRoot "LRGEX-saves\.cache"
+        $cacheDir = Join-Path (Get-ScriptDir) ".cache"
         $localPath = Join-Path $cacheDir $LocalFileName
         
         # Create cache directory if it doesn't exist
@@ -261,7 +319,7 @@ function Get-WebAsset {
         # Download if needed
         if ($shouldDownload) {
             $webClient = New-Object System.Net.WebClient
-            $webClient.Headers.Add("User-Agent", "LRGEX OneDrive Junction Sync Tool")
+            $webClient.Headers.Add("User-Agent", "LRGEX Junction Sync Tool")
             $webClient.DownloadFile($Url, $localPath)
             $webClient.Dispose()
         }
@@ -337,7 +395,7 @@ function Add-LogoPanel {
             $logoLabel = New-Object System.Windows.Forms.Label
             $logoLabel.Location = New-Object System.Drawing.Point(140, 15)
             $logoLabel.Size = New-Object System.Drawing.Size(340, 30)
-            $logoLabel.Text = "OneDrive Junction Sync Tool"
+            $logoLabel.Text = "Junction Sync Tool"
             $logoLabel.Font = New-Object System.Drawing.Font("Segoe UI", 12, [System.Drawing.FontStyle]::Bold)
             $logoLabel.ForeColor = [System.Drawing.Color]::FromArgb(45, 45, 45)
             $logoPanel.Controls.Add($logoLabel)
@@ -345,7 +403,7 @@ function Add-LogoPanel {
             $logoLabel = New-Object System.Windows.Forms.Label
             $logoLabel.Location = New-Object System.Drawing.Point(10, 10)
             $logoLabel.Size = New-Object System.Drawing.Size(470, 40)
-            $logoLabel.Text = "LRGEX OneDrive Junction Sync Tool"
+            $logoLabel.Text = "LRGEX Junction Sync Tool"
             $logoLabel.Font = New-Object System.Drawing.Font("Segoe UI", 14, [System.Drawing.FontStyle]::Bold)
             $logoLabel.ForeColor = [System.Drawing.Color]::FromArgb(45, 45, 45)
             $logoLabel.TextAlign = 'MiddleCenter'
@@ -357,13 +415,13 @@ function Add-LogoPanel {
 }
 
 function Get-OneDrivePath {
-    # Return Documents path where LRGEX-saves should be located
+    # Legacy wrapper kept for backward compat. New code uses Get-ScriptDir (home).
     return Get-OneDrivePathRaw
 }
 
 function Get-ConfigPath {
-    $oneDriveRoot = Get-OneDrivePath
-    return Join-Path $oneDriveRoot "LRGEX-saves\junction-config.json"
+    # Config lives next to the script (home = the script's own folder). Cloud-agnostic.
+    return Join-Path (Get-ScriptDir) "junction-config.json"
 }
 
 function Get-JunctionConfig {
@@ -399,110 +457,150 @@ function Get-JunctionConfig {
     }
 }
 
-# If auto-restore is requested, run silently and exit
-if ($AutoRestore) {
-    $config = Get-JunctionConfig
-    if ($config.Junctions.Count -gt 0) {
-        # Smart check: Only restore if junctions are actually missing or broken
-        $needsRestore = $false
-        $oneDriveRoot = Get-OneDrivePath
-          foreach ($junction in $config.Junctions) {
-            $sourcePath = $junction.SourcePath
-            $targetRelPath = $junction.TargetRelativePath
-            $fullTargetFolder = Join-Path $oneDriveRoot $targetRelPath
-            $linkName = Split-Path -Path $sourcePath -Leaf
-            $junctionPath = Join-Path $fullTargetFolder $linkName
-            
-            # Check if junction is missing or broken
-            if (-not (Test-Path $junctionPath)) {
-                $needsRestore = $true
-                break
-            }            # Check if junction points to wrong location
-            try {
-                $dirInfo = Get-Item $junctionPath -Force
-                if ($dirInfo.Attributes -band [System.IO.FileAttributes]::ReparsePoint) {
-                    $fsutil = cmd /c "fsutil reparsepoint query `"$junctionPath`"" 2>$null
-                    # Ensure fsutil output exists and is not null/empty before regex matching
-                    if ($fsutil -and ($fsutil | Out-String).Trim() -ne "") {
-                        $fsutilText = $fsutil | Out-String
-                        if ($fsutilText -match "Print Name:\s*(.+)") {
-                            $existingTarget = $matches[1].Trim()
-                            if ($existingTarget -ne $sourcePath) {
-                                $needsRestore = $true
-                                break
-                            }
-                        } else {
-                            $needsRestore = $true
-                            break
-                        }
-                    } else {
-                        $needsRestore = $true
-                        break
-                    }
-                } else {
-                    # Path exists but is not a junction
-                    $needsRestore = $true
-                    break
-                }
-            } catch {
-                $needsRestore = $true
-                break
+<#
+.SYNOPSIS
+    Safely clears a junction link path before (re)creating a junction.
+.DESCRIPTION
+    Replaces the old destructive Remove-Item -Recurse that could delete real
+    downloaded files after a format. Behavior:
+      - Missing path              -> nothing to do (success)
+      - Reparse point (junction)  -> remove the link only (safe, no data behind it)
+      - Empty real folder         -> remove (safe)
+      - Real folder WITH files    -> NEVER delete:
+          * source empty/missing  -> move recovered files INTO the source (post-format restore)
+          * source already has data -> move the OneDrive copy aside to -RESTORED-<timestamp>
+    On any failure it returns $false (caller skips) so real data is never destroyed.
+.PARAMETER JunctionPath
+    The path where the junction link will be created (inside OneDrive).
+.PARAMETER SourcePath
+    The original local folder the junction should point to.
+.OUTPUTS
+    [bool] $true if the path is clear and the junction can be created; $false on failure.
+#>
+function Clear-JunctionPath {
+    param(
+        [string]$JunctionPath,
+        [string]$SourcePath
+    )
+    try {
+        if (-not (Test-Path $JunctionPath)) { return $true }
+
+        $item = Get-Item $JunctionPath -Force -ErrorAction Stop
+
+        # A reparse point is just a link -> remove the link ONLY, never the target's contents.
+        # Remove-Item crashes on a junction whose target is non-empty, so use rmdir (primary) and
+        # .NET Directory.Delete($false) (fallback). Both delete the reparse point without touching target data.
+        if ($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) {
+            cmd /c rmdir "`"$JunctionPath`"" 2>$null | Out-Null
+            if (Test-Path $JunctionPath) {
+                try { [System.IO.Directory]::Delete($JunctionPath, $false) } catch { }
             }
+            return (-not (Test-Path $JunctionPath))
         }
-          # Only restore if actually needed
-        if ($needsRestore) {
-            foreach ($junction in $config.Junctions) {
-                try {
-                    $sourcePath = $junction.SourcePath
-                    $targetRelPath = $junction.TargetRelativePath
-                    
-                    # Create source folder if it doesn't exist
-                    if (-not (Test-Path $sourcePath)) {
-                        New-Item -Path $sourcePath -ItemType Directory -Force | Out-Null
-                    }
-                    
-                    # Create target folder in OneDrive if needed
-                    $fullTargetFolder = Join-Path $oneDriveRoot $targetRelPath
-                    if (-not (Test-Path $fullTargetFolder)) {
-                        New-Item -Path $fullTargetFolder -ItemType Directory -Force | Out-Null
-                    }
-                    
-                    # Create junction
-                    $linkName = Split-Path -Path $sourcePath -Leaf
-                    $junctionPath = Join-Path $fullTargetFolder $linkName                    # Only create if it doesn't exist or is invalid
-                    $needsCreation = $true
-                    if (Test-Path $junctionPath) {
-                        try {
-                            $dirInfo = Get-Item $junctionPath -Force
-                            if ($dirInfo.Attributes -band [System.IO.FileAttributes]::ReparsePoint) {
-                                $fsutil = cmd /c "fsutil reparsepoint query `"$junctionPath`"" 2>$null
-                                # Ensure fsutil output exists and is not null/empty before regex matching
-                                if ($fsutil -and ($fsutil | Out-String).Trim() -ne "") {
-                                    $fsutilText = $fsutil | Out-String
-                                    if ($fsutilText -match "Print Name:\s*(.+)") {
-                                        $existingTarget = $matches[1].Trim()
-                                        if ($existingTarget -eq $sourcePath) {
-                                            $needsCreation = $false
-                                        }
-                                    }
-                                }
-                            }
-                        } catch { }
-                    }
-                    
-                    if ($needsCreation) {
-                        if (Test-Path $junctionPath) {
-                            Remove-Item $junctionPath -Force -Recurse -ErrorAction SilentlyContinue
-                        }
-                        cmd /c "mklink /J `"$junctionPath`" `"$sourcePath`"" 2>$null | Out-Null
-                    }
-                } catch { }
+
+        # It's a real folder. Does it contain anything?
+        $hasContent = ((Get-ChildItem $JunctionPath -Force -ErrorAction SilentlyContinue | Measure-Object).Count -gt 0)
+        if (-not $hasContent) {
+            Remove-Item $JunctionPath -Force -Recurse -ErrorAction Stop
+            return $true
+        }
+
+        # Real folder WITH files -> never delete. Decide where the data should go.
+        $sourceHasContent = (Test-Path $SourcePath) -and ((Get-ChildItem $SourcePath -Force -ErrorAction SilentlyContinue | Measure-Object).Count -gt 0)
+
+        if (-not $sourceHasContent) {
+            # Post-format restore: source is empty/missing. Move recovered files to their real home.
+            if (-not (Test-Path $SourcePath)) {
+                New-Item -Path $SourcePath -ItemType Directory -Force | Out-Null
             }
+            Get-ChildItem $JunctionPath -Force | ForEach-Object {
+                Move-Item -Path $_.FullName -Destination $SourcePath -Force -ErrorAction SilentlyContinue
+            }
+            Remove-Item $JunctionPath -Force -ErrorAction SilentlyContinue
+            return $true
+        } else {
+            # Conflict: both spots have data. Don't destroy anything - move OneDrive copy aside.
+            $aside = "$JunctionPath-RESTORED-$(Get-Date -Format 'yyyyMMdd-HHmmss')"
+            Move-Item -Path $JunctionPath -Destination $aside -Force -ErrorAction Stop
+            return $true
         }
-        # If no restore was needed, exit silently without doing anything
+    } catch {
+        return $false
     }
-    exit
 }
+
+<#
+.SYNOPSIS
+    Returns the backup path where a folder pair's real files are stored (cloud-agnostic).
+.DESCRIPTION
+    Synced files live INSIDE the script's own folder (home): <home>\<sourceLeaf>.
+    Real files (no junction) so any cloud service (or none) syncs them normally.
+#>
+function Get-PairCloudPath {
+    param([string]$SourcePath, [string]$TargetRelativePath)
+    # Cloud-agnostic: synced files live INSIDE the script's own folder (home): <home>\<sourceLeaf>.
+    # TargetRelativePath is accepted for backward compatibility but ignored (home is the destination).
+    $leaf = Split-Path -Path $SourcePath -Leaf
+    return Join-Path (Get-ScriptDir) $leaf
+}
+
+<#
+.SYNOPSIS
+    Mirror a folder TO OneDrive (backup direction). Copy-only.
+.DESCRIPTION
+    robocopy /E with NO /MIR and NO purge -> nothing is ever deleted. New/changed files
+    in the source are copied into the OneDrive cloud folder; the cloud copy keeps everything
+    (archive + latest versions). This robocopy mirror is the engine that replaced junctions.
+.OUTPUTS [bool] $true if robocopy succeeded (exit code < 8).
+#>
+function Sync-PairToCloud {
+    param([string]$SourcePath, [string]$TargetRelativePath)
+    if ([string]::IsNullOrWhiteSpace($SourcePath) -or -not (Test-Path $SourcePath)) { return $false }
+    try {
+        $cloud = Get-PairCloudPath -SourcePath $SourcePath -TargetRelativePath $TargetRelativePath
+        $parent = Split-Path $cloud -Parent
+        if (-not (Test-Path $parent)) { New-Item -ItemType Directory -Path $parent -Force | Out-Null }
+        robocopy.exe "$SourcePath" "$cloud" /E /XJ /NFL /NDL /NJH /NJS /NP /R:1 /W:1 | Out-Null
+        return ($LASTEXITCODE -lt 8)
+    } catch { return $false }
+}
+
+<#
+.SYNOPSIS
+    Restore a folder FROM OneDrive to its original path. Copy-only, never deletes.
+.DESCRIPTION
+    After a format, OneDrive holds the real recovered files; this copies them back to SourcePath.
+    robocopy /E with NO purge -> nothing in either location is deleted. The cloud copy stays intact.
+.OUTPUTS [bool] $true if robocopy succeeded (exit code < 8).
+#>
+function Restore-PairFromCloud {
+    param([string]$SourcePath, [string]$TargetRelativePath)
+    try {
+        $cloud = Get-PairCloudPath -SourcePath $SourcePath -TargetRelativePath $TargetRelativePath
+        if (-not (Test-Path $cloud)) { return $false }
+        if (-not (Test-Path $SourcePath)) { New-Item -ItemType Directory -Path $SourcePath -Force | Out-Null }
+        robocopy.exe "$cloud" "$SourcePath" /E /XJ /NFL /NDL /NJH /NJS /NP /R:1 /W:1 | Out-Null
+        return ($LASTEXITCODE -lt 8)
+    } catch { return $false }
+}
+
+<#
+.SYNOPSIS
+    Mirror ALL registered folder pairs to OneDrive. Used by the periodic background sync task.
+.OUTPUTS hashtable @{ Ok = <int>; Fail = <int> }
+#>
+function Sync-AllPairs {
+    $config = Get-JunctionConfig
+    $ok = 0; $fail = 0
+    if ($config.Junctions) {
+        foreach ($j in $config.Junctions) {
+            if (Sync-PairToCloud -SourcePath $j.SourcePath -TargetRelativePath $j.TargetRelativePath) { $ok++ } else { $fail++ }
+        }
+    }
+    return @{ Ok = $ok; Fail = $fail }
+}
+
+
 
 function Save-JunctionConfig {
     param($sourcePath, $targetRelPath)
@@ -669,11 +767,7 @@ function Test-JunctionHealth {
     $missing = 0
       foreach ($junction in $config.Junctions) {
         $sourcePath = $junction.SourcePath
-        $targetRelPath = $junction.TargetRelativePath
-        $oneDriveRoot = Get-OneDrivePath
-        $fullTargetFolder = Join-Path $oneDriveRoot $targetRelPath
-        $linkName = Split-Path -Path $sourcePath -Leaf
-        $junctionPath = Join-Path $fullTargetFolder $linkName
+        $junctionPath = Get-PairCloudPath -SourcePath $sourcePath
         
         $results += "Checking: $sourcePath"
         
@@ -743,7 +837,8 @@ function Set-AutoRestoreSettings {
     } catch {
         # Ignore save errors
     }
-      $taskName = "OneDriveJunctionRestore"
+      $taskName = "LRGEX-AutoRestore"
+      $legacyTaskName = "OneDriveJunctionRestore"   # pre-cloud-agnostic name; cleaned up on enable/disable
     
     # Get script path using same detection method
     $scriptPath = $null
@@ -763,13 +858,10 @@ function Set-AutoRestoreSettings {
             }
         } catch { }
         
-        # Fallback search for LRGEX-saves location
+        # Fallback: the home folder (script's own folder)
         if ([string]::IsNullOrEmpty($scriptPath)) {
-            $documentsPath = Get-OneDrivePathRaw
-            $lrgexPath = Join-Path $documentsPath "LRGEX-saves\onedrivesync.ps1"
-            if (Test-Path $lrgexPath) {
-                $scriptPath = $lrgexPath
-            }
+            $homeScript = Join-Path (Get-ScriptDir) "onedrivesync.ps1"
+            if (Test-Path $homeScript) { $scriptPath = $homeScript }
         }
     }
       try {
@@ -782,15 +874,57 @@ function Set-AutoRestoreSettings {
             # Smart settings: Don't run too frequently, allow battery operation
             $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -RestartInterval (New-TimeSpan -Hours 1) -RestartCount 3
             
+            # Migration: remove any task left over from older versions (old task name).
+            Unregister-ScheduledTask -TaskName $legacyTaskName -Confirm:$false -ErrorAction SilentlyContinue
             Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Force | Out-Null
-            [System.Windows.Forms.MessageBox]::Show("Smart auto-restore enabled!`nSetting saved to JSON config (syncs via OneDrive).`nJunctions will only be restored when actually needed (missing/broken).","Auto-Restore Enabled","OK","Information")
+            [System.Windows.Forms.MessageBox]::Show("Auto-restore enabled.`nSetting saved to JSON config (in your sync home folder).`nOn each login it restores a folder ONLY if its original path is missing or empty (e.g. after a format). On normal logins, nothing happens.","Auto-Restore Enabled","OK","Information")
         } else {
-            # Remove scheduled task
+            # Remove scheduled task (new + legacy names, for cleanliness)
             Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue
-            [System.Windows.Forms.MessageBox]::Show("Auto-restore disabled successfully!`nSetting saved to JSON config (syncs via OneDrive).","Auto-Restore Disabled","OK","Information")
+            Unregister-ScheduledTask -TaskName $legacyTaskName -Confirm:$false -ErrorAction SilentlyContinue
+            [System.Windows.Forms.MessageBox]::Show("Auto-restore disabled.`nSetting saved to JSON config (in your sync home folder).","Auto-Restore Disabled","OK","Information")
         }
     } catch {
         [System.Windows.Forms.MessageBox]::Show("Failed to configure auto-restore:`n$_","Auto-Restore Error","OK","Error")
+    }
+}
+
+<#
+.SYNOPSIS
+    Adds/removes the File Explorer right-click "Sync folder (LRGEX)" entry.
+.DESCRIPTION
+    Registry command passes ONLY the folder (%V) to -Link; destination resolved dynamically.
+    Enabling also ensures the JSON knows the default destination and (re)creates the
+    continuous background sync task once (this GUI runs elevated).
+#>
+function Set-RightClickMenu {
+    param([bool]$Enable)
+    $regKey = "HKCU:\Software\Classes\Directory\shell\LRGEXSync"
+    try {
+        if ($Enable) {
+            $scriptPath = $null
+            if ($PSCommandPath -and (Test-Path $PSCommandPath)) { $scriptPath = $PSCommandPath }
+            elseif ($MyInvocation.MyCommand.Path -and (Test-Path $MyInvocation.MyCommand.Path)) { $scriptPath = $MyInvocation.MyCommand.Path }
+            else {
+                $homeScript = Join-Path (Get-ScriptDir) "onedrivesync.ps1"
+                if (Test-Path $homeScript) { $scriptPath = $homeScript }
+            }
+            if (-not $scriptPath) { [System.Windows.Forms.MessageBox]::Show("Could not find the script path.","LRGEX Sync","OK","Warning") | Out-Null; return }
+            Set-SyncTask -Enable $true
+            New-Item -Path $regKey -Force | Out-Null
+            Set-ItemProperty -Path $regKey -Name '(Default)' -Value 'Sync folder (LRGEX)'
+            Set-ItemProperty -Path $regKey -Name 'Icon' -Value 'shell32.dll,165'
+            $cmdKey = "$regKey\command"
+            New-Item -Path $cmdKey -Force | Out-Null
+            $cmd = 'PowerShell.exe -WindowStyle Hidden -ExecutionPolicy Bypass -File "' + $scriptPath + '" -Link "%V"'
+            Set-ItemProperty -Path $cmdKey -Name '(Default)' -Value $cmd
+            [System.Windows.Forms.MessageBox]::Show("Right-click 'Sync folder' enabled!`nRight-click any folder to sync it. Background sync is also on.","LRGEX Sync","OK","Information") | Out-Null
+        } else {
+            Remove-Item -Path $regKey -Recurse -Force -ErrorAction SilentlyContinue
+            [System.Windows.Forms.MessageBox]::Show("Right-click sync removed.","LRGEX Sync","OK","Information") | Out-Null
+        }
+    } catch {
+        [System.Windows.Forms.MessageBox]::Show("Failed: $_","LRGEX Sync","OK","Error") | Out-Null
     }
 }
 
@@ -798,6 +932,47 @@ function Test-AutoRestoreSettings {
     # Check JSON config first (primary source of truth)
     $config = Get-JunctionConfig
     return $config.AutoRestoreEnabled
+}
+
+<#
+.SYNOPSIS
+    Enables/disables the continuous background sync task that mirrors all folder pairs to OneDrive.
+.DESCRIPTION
+    Registers a Windows Scheduled Task "LRGEX-FolderSync" that fires at logon AND repeats every
+    IntervalMinutes. Each run executes onedrivesync.ps1 -Sync, which mirrors every registered
+    folder pair into OneDrive (copy-only, never deletes). The repeat interval IS the sync lag
+    window (max time between a local change and it reaching the cloud).
+.PARAMETER Enable
+    $true to create/update the task; $false to remove it.
+.PARAMETER IntervalMinutes
+    Repeat interval in minutes. Default 5. This is the maximum sync lag.
+#>
+function Set-SyncTask {
+    param([bool]$Enable, [int]$IntervalMinutes = 5)
+    $taskName = "LRGEX-FolderSync"
+    try {
+        if ($Enable) {
+            # Resolve the relocated script path (same approach as the auto-restore task)
+            $scriptPath = $null
+            if ($PSCommandPath -and (Test-Path $PSCommandPath)) { $scriptPath = $PSCommandPath }
+            elseif ($MyInvocation.MyCommand.Path -and (Test-Path $MyInvocation.MyCommand.Path)) { $scriptPath = $MyInvocation.MyCommand.Path }
+            else {
+                $homeScript = Join-Path (Get-ScriptDir) "onedrivesync.ps1"
+                if (Test-Path $homeScript) { $scriptPath = $homeScript }
+            }
+            if (-not $scriptPath) { return }
+
+            $action = New-ScheduledTaskAction -Execute "PowerShell.exe" -Argument "-WindowStyle Hidden -ExecutionPolicy Bypass -File `$"$scriptPath`$" -Sync"
+            # At-logon trigger that REPEATS every IntervalMinutes indefinitely (no Duration = repeat forever)
+            $trigger = New-ScheduledTaskTrigger -AtLogon
+            $trigger.Repetition = (New-CimInstance -ClassName MSFT_TaskRepetitionPattern -Namespace "Root/Microsoft/Windows/TaskScheduler" -Property @{ Interval = "PT$($IntervalMinutes)M"; StopAtDurationEnd = $false } -ClientOnly)
+            $principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interactive -RunLevel Highest
+            $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Minutes 10) -MultipleInstances IgnoreNew
+            Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Force | Out-Null
+        } else {
+            Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue
+        }
+    } catch { }
 }
 
 function Remove-JunctionDialog {
@@ -829,7 +1004,7 @@ function Remove-JunctionDialog {
     $checkedList.Size = New-Object System.Drawing.Size(570,250)
     $checkedList.CheckOnClick = $true
       foreach ($junction in $config.Junctions) {
-        $displayText = "$($junction.SourcePath) → $($junction.TargetRelativePath)"
+        $displayText = "$($junction.SourcePath)"
         $checkedList.Items.Add($displayText, $false)  # Default to unchecked for safety
     }
     $removeForm.Controls.Add($checkedList)
@@ -865,7 +1040,6 @@ function Remove-JunctionDialog {
           if ($confirmResult -ne [System.Windows.Forms.DialogResult]::Yes) {
             return
         }
-          $oneDriveRoot = Get-OneDrivePath
         $removed = 0
         $errors = 0
         $configPath = Get-ConfigPath
@@ -879,9 +1053,7 @@ function Remove-JunctionDialog {
                 $targetRelPath = $junction.TargetRelativePath
                   try {
                     # Calculate junction path
-                    $fullTargetFolder = Join-Path $oneDriveRoot $targetRelPath
-                    $linkName = Split-Path -Path $sourcePath -Leaf
-                    $junctionPath = Join-Path $fullTargetFolder $linkName
+                    $junctionPath = Get-PairCloudPath -SourcePath $sourcePath
                     
                     # Remove junction if it exists
                     if (Test-Path $junctionPath) {
@@ -960,7 +1132,7 @@ function Show-RestoreDialog {
     $checkedList.Size = New-Object System.Drawing.Size(570,250)
     $checkedList.CheckOnClick = $true
       foreach ($junction in $config.Junctions) {
-        $displayText = "$($junction.SourcePath) → $($junction.TargetRelativePath)"
+        $displayText = "$($junction.SourcePath)"
         $checkedList.Items.Add($displayText, $true)
     }
     $restoreForm.Controls.Add($checkedList)
@@ -1006,9 +1178,7 @@ function Show-RestoreDialog {
         $btnRestore.Enabled = $false
         $btnCancel.Enabled = $false
         
-        $oneDriveRoot = Get-OneDrivePath
         $restored = 0
-        $skipped = 0
         $errors = 0
         $current = 0
         
@@ -1025,58 +1195,8 @@ function Show-RestoreDialog {
                 $restoreForm.Refresh()
                 
                 try {
-                    # Create source folder if it doesn't exist
-                    if (-not (Test-Path $sourcePath)) {
-                        New-Item -Path $sourcePath -ItemType Directory -Force | Out-Null
-                    }
-                      # Create target folder in OneDrive if needed
-                    $fullTargetFolder = Join-Path $oneDriveRoot $targetRelPath
-                    if (-not (Test-Path $fullTargetFolder)) {
-                        New-Item -Path $fullTargetFolder -ItemType Directory -Force | Out-Null
-                    }
-                    
-                    # Create junction
-                    $linkName = Split-Path -Path $sourcePath -Leaf
-                    $junctionPath = Join-Path $fullTargetFolder $linkName
-                    
-                    # Check if junction already exists and is valid
-                    if (Test-Path $junctionPath) {
-                        # Check if it's actually a junction pointing to the right place
-                        $existingTarget = $null
-                        try {
-                            $dirInfo = Get-Item $junctionPath -Force                            if ($dirInfo.Attributes -band [System.IO.FileAttributes]::ReparsePoint) {
-                                # It's a junction/reparse point, check if it points to our source
-                                $fsutil = cmd /c "fsutil reparsepoint query `"$junctionPath`"" 2>$null
-                                # Ensure fsutil output exists and is not null/empty before regex matching
-                                if ($fsutil -and ($fsutil | Out-String).Trim() -ne "") {
-                                    $fsutilText = $fsutil | Out-String
-                                    if ($fsutilText -match "Print Name:\s*(.+)") {
-                                        $existingTarget = $matches[1].Trim()
-                                    }
-                                }
-                            }
-                        } catch {
-                            # Error checking junction, treat as invalid
-                        }
-                        
-                        if ($existingTarget -eq $sourcePath) {
-                            # Junction already exists and points to correct location
-                            $skipped++
-                            continue
-                        } else {
-                            # Junction exists but points elsewhere - remove it first
-                            try {
-                                Remove-Item $junctionPath -Force -Recurse                            } catch {
-                                $errors++
-                                continue
-                            }
-                        }
-                    }
-                    
-                    # Create new junction
-                    $cmd = "cmd /c mklink /J `"$junctionPath`" `"$sourcePath`""
-                    Invoke-Expression $cmd 2>&1 | Out-Null
-                    if ($LASTEXITCODE -eq 0) {
+                    # Mirror engine: copy this folder back from OneDrive to its original path (copy-only, never deletes)
+                    if (Restore-PairFromCloud -SourcePath $sourcePath -TargetRelativePath $targetRelPath) {
                         $restored++
                     } else {
                         $errors++
@@ -1096,8 +1216,7 @@ function Show-RestoreDialog {
         $btnCancel.Enabled = $true
         
         $message = "Restore complete!"
-        if ($restored -gt 0) { $message += "`n[OK] Created: $restored junctions" }
-        if ($skipped -gt 0) { $message += "`n[SKIP] Skipped: $skipped (already exist)" }
+        if ($restored -gt 0) { $message += "`n[OK] Restored: $restored folders" }
         if ($errors -gt 0) { $message += "`n[ERROR] Errors: $errors" }
         
         [System.Windows.Forms.MessageBox]::Show($message,"Restore Complete","OK","Information")
@@ -1117,9 +1236,72 @@ function Show-RestoreDialog {
     [void]$restoreForm.ShowDialog()
 }
 
+# Auto-restore (post-format recovery). SMART: a pair is restored ONLY when its original
+# source path is MISSING or EMPTY - the true post-format signal. On a normal login (sources
+# already present with data) nothing happens - a complete no-op. Only when at least one
+# restore actually runs do we also recreate the continuous-sync task (absent on a fresh install).
+if ($AutoRestore) {
+    $config = Get-JunctionConfig
+    if ($config.Junctions.Count -gt 0) {
+        $restored = 0
+        foreach ($j in $config.Junctions) {
+            $src = $j.SourcePath
+            $needsRestore = $false
+            if (-not (Test-Path $src)) {
+                $needsRestore = $true
+            } else {
+                try {
+                    if ((Get-ChildItem $src -Force -ErrorAction SilentlyContinue | Measure-Object).Count -eq 0) { $needsRestore = $true }
+                } catch { }
+            }
+            if ($needsRestore) {
+                Restore-PairFromCloud -SourcePath $src -TargetRelativePath $j.TargetRelativePath | Out-Null
+                $restored++
+            }
+        }
+        # Recreate the continuous-sync task only if we actually restored something (post-format).
+        if ($restored -gt 0) { Set-SyncTask -Enable $true }
+    }
+    exit
+}
+
+# If invoked for periodic background sync, mirror ALL folder pairs to OneDrive and exit.
+# This is the continuous-sync engine: a Windows Scheduled Task calls the (already relocated,
+# already elevated) script with -Sync every few minutes, so new/changed files reach OneDrive
+# automatically while you keep working. Copy-only (never deletes).
+if ($Sync) {
+    Sync-AllPairs | Out-Null
+    exit
+}
+
+# Invoked by the right-click "Sync folder" menu (folder passed via %V as -Link).
+# Admin-free by design: NO elevation, NO Set-SyncTask => no UAC on every right-click.
+# Destination is the script's own folder (home); nothing hardcoded - works for any user.
+if ($Link) {
+    Add-Type -AssemblyName System.Windows.Forms
+    try {
+        $folder = $Link.Trim('"').Trim("'").Trim()
+        if (-not (Test-Path $folder -PathType Container)) {
+            [System.Windows.Forms.MessageBox]::Show("Not a valid folder:`n$folder","LRGEX Sync","OK","Warning") | Out-Null
+            exit
+        }
+        Save-JunctionConfig -sourcePath $folder
+        $ok = Sync-PairToCloud -SourcePath $folder
+        $leaf = Split-Path $folder -Leaf
+        if ($ok) {
+            [System.Windows.Forms.MessageBox]::Show("Linked and mirrored into your sync home:`n$leaf`nNew files will sync automatically.","LRGEX Sync","OK","Information") | Out-Null
+        } else {
+            [System.Windows.Forms.MessageBox]::Show("Registered, but the first mirror had issues (background sync will retry).`n$leaf","LRGEX Sync","OK","Warning") | Out-Null
+        }
+    } catch {
+        [System.Windows.Forms.MessageBox]::Show("Failed: $_","LRGEX Sync","OK","Error") | Out-Null
+    }
+    exit
+}
+
 # Create Form
 $form = New-Object System.Windows.Forms.Form
-$form.Text = "LRGEX OneDrive Folder Sync"
+$form.Text = "LRGEX Junction Sync Tool"
 $form.Size = New-Object System.Drawing.Size(520,480)
 $form.StartPosition = "CenterScreen"
 $form.TopMost = $true
@@ -1280,6 +1462,26 @@ $disableSchedulingItem.Add_Click({ Set-AutoRestoreSettings -Enable $false })
 $schedulingMenu.DropDownItems.Add($enableSchedulingItem)
 $schedulingMenu.DropDownItems.Add($disableSchedulingItem)
 
+$rcMenu = New-Object System.Windows.Forms.ToolStripMenuItem
+$rcMenu.Text = "Right-Click Sync"
+$rcMenu.BackColor = [System.Drawing.Color]::FromArgb(45, 45, 45)
+$rcMenu.ForeColor = [System.Drawing.Color]::White
+
+$enableRCItem = New-Object System.Windows.Forms.ToolStripMenuItem
+$enableRCItem.Text = "Enable 'Sync folder' on right-click"
+$enableRCItem.BackColor = [System.Drawing.Color]::FromArgb(45, 45, 45)
+$enableRCItem.ForeColor = [System.Drawing.Color]::White
+$enableRCItem.Add_Click({ Set-RightClickMenu -Enable $true })
+
+$disableRCItem = New-Object System.Windows.Forms.ToolStripMenuItem
+$disableRCItem.Text = "Disable right-click"
+$disableRCItem.BackColor = [System.Drawing.Color]::FromArgb(45, 45, 45)
+$disableRCItem.ForeColor = [System.Drawing.Color]::White
+$disableRCItem.Add_Click({ Set-RightClickMenu -Enable $false })
+
+$rcMenu.DropDownItems.Add($enableRCItem)
+$rcMenu.DropDownItems.Add($disableRCItem)
+
 $toolsMenu.DropDownItems.Add($healthCheckItem)
 $toolsMenu.DropDownItems.Add($removeItem)
 $toolsMenu.DropDownItems.Add("-")
@@ -1287,6 +1489,8 @@ $toolsMenu.DropDownItems.Add($exportItem)
 $toolsMenu.DropDownItems.Add($importItem)
 $toolsMenu.DropDownItems.Add("-")
 $toolsMenu.DropDownItems.Add($schedulingMenu)
+$toolsMenu.DropDownItems.Add("-")
+$toolsMenu.DropDownItems.Add($rcMenu)
 
 $menuStrip.Items.Add($toolsMenu)
 $form.Controls.Add($menuStrip)
@@ -1310,25 +1514,19 @@ $btnBrowseSource.Size = New-Object System.Drawing.Size(90,25)
 $btnBrowseSource.Text = "Browse..."
 $form.Controls.Add($btnBrowseSource)
 
-# Label and TextBox for Target Folder (relative to OneDrive root)
+# Home folder display (read-only) - where synced folders are stored
 $labelTarget = New-Object System.Windows.Forms.Label
 $labelTarget.Location = New-Object System.Drawing.Point(10,165)
 $labelTarget.Size = New-Object System.Drawing.Size(450,20)
-$labelTarget.Text = "Select target folder inside OneDrive (relative path):"
+$labelTarget.Text = "Backups are stored in (your sync home folder):"
 $form.Controls.Add($labelTarget)
 
 $textTarget = New-Object System.Windows.Forms.TextBox
 $textTarget.Location = New-Object System.Drawing.Point(10,190)
-$textTarget.Size = New-Object System.Drawing.Size(350,22)
-# Pre-populate with LRGEX-saves as default
-$textTarget.Text = "LRGEX-saves"
+$textTarget.Size = New-Object System.Drawing.Size(440,22)
+$textTarget.ReadOnly = $true
+$textTarget.Text = (Get-ScriptDir)
 $form.Controls.Add($textTarget)
-
-$btnBrowseTarget = New-Object System.Windows.Forms.Button
-$btnBrowseTarget.Location = New-Object System.Drawing.Point(370,188)
-$btnBrowseTarget.Size = New-Object System.Drawing.Size(90,25)
-$btnBrowseTarget.Text = "Browse..."
-$form.Controls.Add($btnBrowseTarget)
 
 # Status label for messages
 $statusLabel = New-Object System.Windows.Forms.Label
@@ -1362,7 +1560,7 @@ $schedulingStatus.Size = New-Object System.Drawing.Size(490,20)
 $schedulingStatus.ForeColor = [System.Drawing.Color]::FromArgb(45, 45, 45)
 $schedulingStatus.Font = New-Object System.Drawing.Font("Microsoft Sans Serif", 8, [System.Drawing.FontStyle]::Italic)
 if (Test-AutoRestoreSettings) {
-    $schedulingStatus.Text = "[ENABLED] Auto-restore on login: ENABLED (smart detection)"
+    $schedulingStatus.Text = "[ENABLED] Auto-restore on login: ENABLED (restores only after a format)"
 } else {
     $schedulingStatus.Text = "[DISABLED] Auto-restore on login: DISABLED"
 }
@@ -1372,12 +1570,9 @@ $form.Controls.Add($schedulingStatus)
 $infoLabel = New-Object System.Windows.Forms.Label
 $infoLabel.Location = New-Object System.Drawing.Point(10,375)
 $infoLabel.Size = New-Object System.Drawing.Size(490,60)
-$infoLabel.Text = "Tip: All settings are saved in JSON config (syncs via OneDrive).`nAfter PC formatting, use 'Restore Saved' to recreate all junctions.`nUse Tools menu for health checks, removal, backup/restore configs, and auto-restore."
+$infoLabel.Text = "Tip: All settings are saved in the JSON config inside your sync home folder.`nAfter PC formatting, use 'Restore Saved' to restore all folders.`nUse Tools menu for health checks, removal, backup/restore configs, and auto-restore."
 $infoLabel.ForeColor = [System.Drawing.Color]::FromArgb(45, 45, 45)
 $form.Controls.Add($infoLabel)
-
-# Get OneDrive root folder
-$oneDriveRoot = Get-OneDrivePath
 
 # Browse Source folder
 $btnBrowseSource.Add_Click({
@@ -1388,91 +1583,40 @@ $btnBrowseSource.Add_Click({
     }
 })
 
-# Browse Target folder inside OneDrive
-$btnBrowseTarget.Add_Click({
-    $folderBrowser = New-Object System.Windows.Forms.FolderBrowserDialog
-    $folderBrowser.Description = "Select target folder inside OneDrive (relative)"
-    $folderBrowser.SelectedPath = $oneDriveRoot
-    if ($folderBrowser.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
-        # Get relative path by removing OneDrive root prefix
-        $sel = $folderBrowser.SelectedPath
-        if ($sel.StartsWith($oneDriveRoot)) {
-            $relativePath = $sel.Substring($oneDriveRoot.Length).TrimStart('\')
-            $textTarget.Text = $relativePath
-        } else {
-            [System.Windows.Forms.MessageBox]::Show("Please select a folder inside your OneDrive folder.","Invalid Selection","OK","Warning")
-        }
-    }
-})
+# (Target picker removed - the home folder you picked is the single destination.)
 
 # Create Junction Button Click Handler
 $btnCreate.Add_Click({
     $sourcePath = $textSource.Text.Trim()
-    $targetRelPath = $textTarget.Text.Trim()
-
-    # Remove quotes if present in the path and normalize
     $sourcePath = $sourcePath.Trim('"').Trim("'").Trim()
-    
-    # Debug: Show what path we're actually testing
-    Write-Host "Testing path: '$sourcePath'"
-    
-    # Validate source path
+
     if ([string]::IsNullOrWhiteSpace($sourcePath)) {
         $statusLabel.ForeColor = [System.Drawing.Color]::Red
         $statusLabel.Text = "[ERROR] Please enter a source folder path."
         return
     }
-    
     if (-not (Test-Path -Path $sourcePath -PathType Container)) {
         $statusLabel.ForeColor = [System.Drawing.Color]::Red
         $statusLabel.Text = "[ERROR] Source folder does not exist:`n'$sourcePath'"
         return
     }
 
-    # Compose full target folder path inside OneDrive
-    $fullTargetFolder = Join-Path $oneDriveRoot $targetRelPath
+    # Home = the script's own folder; synced files go into it (cloud-agnostic mirror engine).
+    $cloudDest = Get-PairCloudPath -SourcePath $sourcePath
 
-    # Ensure OneDrive folder exists
-    if (-not (Test-Path -Path $oneDriveRoot -PathType Container)) {
-        $statusLabel.ForeColor = [System.Drawing.Color]::Red
-        $statusLabel.Text = "[ERROR] OneDrive folder not found. Is OneDrive installed and running?"
-        return
-    }
-
-    # Create target folder if missing
-    if (-not (Test-Path -Path $fullTargetFolder -PathType Container)) {
-        try {
-            New-Item -Path $fullTargetFolder -ItemType Directory -Force | Out-Null
-        } catch {
-            $statusLabel.ForeColor = [System.Drawing.Color]::Red
-            $statusLabel.Text = "[ERROR] Failed to create target folder:`n$_"
-            return
-        }
-    }
-
-    # Junction link path inside target folder, named as source folder's leaf
-    $linkName = Split-Path -Path $sourcePath -Leaf
-    $junctionPath = Join-Path $fullTargetFolder $linkName
-
-    # Check if junction already exists
-    if (Test-Path -Path $junctionPath) {
-        $statusLabel.ForeColor = [System.Drawing.Color]::Red
-        $statusLabel.Text = "[ERROR] Junction already exists at:`n$junctionPath"
-        return    }
-
-    # Create junction via mklink /J
     try {
-        # mklink requires cmd.exe to run
-        $cmd = "cmd /c mklink /J `"$junctionPath`" `"$sourcePath`""
-        Invoke-Expression $cmd | Out-Null
-        $statusLabel.ForeColor = [System.Drawing.Color]::Green
-        $statusLabel.Text = "[OK] Junction created successfully:`n$junctionPath -> $sourcePath"
-        
-        # Save junction configuration for future restore
-        Save-JunctionConfig -sourcePath $sourcePath -targetRelPath $targetRelPath
+        Save-JunctionConfig -sourcePath $sourcePath
+        if (Sync-PairToCloud -SourcePath $sourcePath) {
+            Set-SyncTask -Enable $true
+            $statusLabel.ForeColor = [System.Drawing.Color]::Green
+            $statusLabel.Text = "[OK] Folder linked and mirrored into your sync home:`n$cloudDest  <=  $sourcePath`nNew files will sync automatically every few minutes."
+        } else {
+            $statusLabel.ForeColor = [System.Drawing.Color]::Red
+            $statusLabel.Text = "[ERROR] Folder registered but the first mirror failed:`n$sourcePath`nThe background sync will retry automatically."
+        }
     } catch {
         $statusLabel.ForeColor = [System.Drawing.Color]::Red
-        $statusLabel.Text = "[ERROR] Failed to create junction:`n$_"
+        $statusLabel.Text = "[ERROR] Failed to link folder:`n$_"
     }
 })
 

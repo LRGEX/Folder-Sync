@@ -404,29 +404,23 @@ function Add-LogoPanel {
               # Company text next to logo
             $logoLabel = New-Object System.Windows.Forms.Label
             $logoLabel.Location = New-Object System.Drawing.Point(140, 6)
-            $logoLabel.Size = New-Object System.Drawing.Size(340, 34)
+            $logoLabel.Size = New-Object System.Drawing.Size(340, 48)
             $logoLabel.Text = "Folder Sync"
             $logoLabel.Font = New-Object System.Drawing.Font("Segoe UI", 24, [System.Drawing.FontStyle]::Bold)
             $logoLabel.ForeColor = [System.Drawing.Color]::FromArgb(45, 45, 45)
+            $logoLabel.TextAlign = 'MiddleLeft'
             $logoPanel.Controls.Add($logoLabel)
             # (version moved to bottom-center of the window)
         } else {            # Fallback text-only logo if web download fails
             $logoLabel = New-Object System.Windows.Forms.Label
             $logoLabel.Location = New-Object System.Drawing.Point(10, 6)
-            $logoLabel.Size = New-Object System.Drawing.Size(470, 34)
+            $logoLabel.Size = New-Object System.Drawing.Size(470, 48)
             $logoLabel.Text = "LRGEX Folder Sync"
             $logoLabel.Font = New-Object System.Drawing.Font("Segoe UI", 22, [System.Drawing.FontStyle]::Bold)
             $logoLabel.ForeColor = [System.Drawing.Color]::FromArgb(45, 45, 45)
             $logoLabel.TextAlign = 'MiddleCenter'
             $logoPanel.Controls.Add($logoLabel)
-            $verLabel = New-Object System.Windows.Forms.Label
-            $verLabel.Location = New-Object System.Drawing.Point(10, 42)
-            $verLabel.Size = New-Object System.Drawing.Size(470, 16)
-            $verLabel.Text = 'v' + $script:AppVersion
-            $verLabel.Font = New-Object System.Drawing.Font("Segoe UI", 9)
-            $verLabel.ForeColor = [System.Drawing.Color]::FromArgb(120, 120, 120)
-            $verLabel.TextAlign = 'MiddleCenter'
-            $logoPanel.Controls.Add($verLabel)}
+        }
         
     } catch {
         # If logo panel creation fails, continue without it

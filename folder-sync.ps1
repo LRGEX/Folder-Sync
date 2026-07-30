@@ -394,33 +394,33 @@ function Add-LogoPanel {
             $logoPanel.Controls.Add($logoPictureBox)
               # Company text next to logo
             $logoLabel = New-Object System.Windows.Forms.Label
-            $logoLabel.Location = New-Object System.Drawing.Point(140, 15)
-            $logoLabel.Size = New-Object System.Drawing.Size(340, 30)
+            $logoLabel.Location = New-Object System.Drawing.Point(140, 6)
+            $logoLabel.Size = New-Object System.Drawing.Size(340, 34)
             $logoLabel.Text = "Folder Sync"
-            $logoLabel.Font = New-Object System.Drawing.Font("Segoe UI", 12, [System.Drawing.FontStyle]::Bold)
+            $logoLabel.Font = New-Object System.Drawing.Font("Segoe UI", 24, [System.Drawing.FontStyle]::Bold)
             $logoLabel.ForeColor = [System.Drawing.Color]::FromArgb(45, 45, 45)
             $logoPanel.Controls.Add($logoLabel)
             $verLabel = New-Object System.Windows.Forms.Label
-            $verLabel.Location = New-Object System.Drawing.Point(140, 40)
+            $verLabel.Location = New-Object System.Drawing.Point(140, 42)
             $verLabel.Size = New-Object System.Drawing.Size(200, 16)
             $verLabel.Text = 'v' + $script:AppVersion
-            $verLabel.Font = New-Object System.Drawing.Font("Segoe UI", 8)
+            $verLabel.Font = New-Object System.Drawing.Font("Segoe UI", 9)
             $verLabel.ForeColor = [System.Drawing.Color]::FromArgb(120, 120, 120)
             $logoPanel.Controls.Add($verLabel)
         } else {            # Fallback text-only logo if web download fails
             $logoLabel = New-Object System.Windows.Forms.Label
-            $logoLabel.Location = New-Object System.Drawing.Point(10, 10)
-            $logoLabel.Size = New-Object System.Drawing.Size(470, 40)
+            $logoLabel.Location = New-Object System.Drawing.Point(10, 6)
+            $logoLabel.Size = New-Object System.Drawing.Size(470, 34)
             $logoLabel.Text = "LRGEX Folder Sync"
-            $logoLabel.Font = New-Object System.Drawing.Font("Segoe UI", 14, [System.Drawing.FontStyle]::Bold)
+            $logoLabel.Font = New-Object System.Drawing.Font("Segoe UI", 22, [System.Drawing.FontStyle]::Bold)
             $logoLabel.ForeColor = [System.Drawing.Color]::FromArgb(45, 45, 45)
             $logoLabel.TextAlign = 'MiddleCenter'
             $logoPanel.Controls.Add($logoLabel)
             $verLabel = New-Object System.Windows.Forms.Label
-            $verLabel.Location = New-Object System.Drawing.Point(10, 44)
-            $verLabel.Size = New-Object System.Drawing.Size(470, 14)
+            $verLabel.Location = New-Object System.Drawing.Point(10, 42)
+            $verLabel.Size = New-Object System.Drawing.Size(470, 16)
             $verLabel.Text = 'v' + $script:AppVersion
-            $verLabel.Font = New-Object System.Drawing.Font("Segoe UI", 8)
+            $verLabel.Font = New-Object System.Drawing.Font("Segoe UI", 9)
             $verLabel.ForeColor = [System.Drawing.Color]::FromArgb(120, 120, 120)
             $verLabel.TextAlign = 'MiddleCenter'
             $logoPanel.Controls.Add($verLabel)}

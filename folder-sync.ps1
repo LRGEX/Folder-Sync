@@ -291,6 +291,7 @@ Add-Type -AssemblyName System.Drawing
 # Web-based logo/icon configuration
 $script:LogoUrl = "https://download.lrgex.com/Light%20Full%20logo.png"
 $script:IconUrl = "https://download.lrgex.com/bigx-dark-icon.ico"
+$script:AppVersion = '0.5.8'
 
 function Get-WebAsset {
     param(
@@ -370,7 +371,7 @@ function Add-LogoPanel {
     
     try {
         # Increase form size to accommodate logo
-        $Form.Size = New-Object System.Drawing.Size(520, 525)
+        $Form.Size = New-Object System.Drawing.Size(520, 545)
         
         # Create logo panel
         $logoPanel = New-Object System.Windows.Forms.Panel
@@ -395,7 +396,7 @@ function Add-LogoPanel {
             $logoLabel = New-Object System.Windows.Forms.Label
             $logoLabel.Location = New-Object System.Drawing.Point(140, 15)
             $logoLabel.Size = New-Object System.Drawing.Size(340, 30)
-            $logoLabel.Text = "Junction Sync Tool"
+            $logoLabel.Text = "Junction Sync Tool    v" + $script:AppVersion
             $logoLabel.Font = New-Object System.Drawing.Font("Segoe UI", 12, [System.Drawing.FontStyle]::Bold)
             $logoLabel.ForeColor = [System.Drawing.Color]::FromArgb(45, 45, 45)
             $logoPanel.Controls.Add($logoLabel)
@@ -403,7 +404,7 @@ function Add-LogoPanel {
             $logoLabel = New-Object System.Windows.Forms.Label
             $logoLabel.Location = New-Object System.Drawing.Point(10, 10)
             $logoLabel.Size = New-Object System.Drawing.Size(470, 40)
-            $logoLabel.Text = "LRGEX Junction Sync Tool"
+            $logoLabel.Text = "LRGEX Junction Sync Tool    v" + $script:AppVersion
             $logoLabel.Font = New-Object System.Drawing.Font("Segoe UI", 14, [System.Drawing.FontStyle]::Bold)
             $logoLabel.ForeColor = [System.Drawing.Color]::FromArgb(45, 45, 45)
             $logoLabel.TextAlign = 'MiddleCenter'
@@ -1476,7 +1477,7 @@ if ($Link) {
 # Create Form
 $form = New-Object System.Windows.Forms.Form
 $form.Text = "LRGEX Junction Sync Tool"
-$form.Size = New-Object System.Drawing.Size(520,525)
+$form.Size = New-Object System.Drawing.Size(520,545)
 $form.StartPosition = "CenterScreen"
 $form.TopMost = $true
 $form.FormBorderStyle = 'FixedDialog'
@@ -1858,16 +1859,6 @@ $healthTimer.Interval = 30000
 $healthTimer.Add_Tick({ Update-HealthLamp })
 Update-HealthLamp
 $healthTimer.Start()
-
-# Version label (bottom-right)
-$versionLabel = New-Object System.Windows.Forms.Label
-$versionLabel.Text = 'v0.5.8'
-$versionLabel.Location = New-Object System.Drawing.Point(430,478)
-$versionLabel.Size = New-Object System.Drawing.Size(70,16)
-$versionLabel.Font = New-Object System.Drawing.Font('Segoe UI',8)
-$versionLabel.ForeColor = [System.Drawing.Color]::Gray
-$versionLabel.TextAlign = 'MiddleRight'
-$form.Controls.Add($versionLabel)
 
 # Show the form
 $form.Add_Shown({$form.Activate()})

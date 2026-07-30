@@ -291,7 +291,7 @@ Add-Type -AssemblyName System.Drawing
 # Web-based logo/icon configuration
 $script:LogoUrl = "https://download.lrgex.com/Light%20Full%20logo.png"
 $script:IconUrl = "https://download.lrgex.com/bigx-dark-icon.ico"
-$script:AppVersion = '0.6.0'
+$script:AppVersion = '0.6.1'
 
 function Get-WebAsset {
     param(
@@ -654,23 +654,34 @@ function Restore-PairFromCloud {
 #>
 function Sync-AllPairs {
     $config = Get-JunctionConfig
-    $ok = 0; $fail = 0
+    $ok = 0; $fail = 0; $restored = 0
     Write-SyncLog ('------------------------------------------------------------')
     Write-SyncLog ("Sync cycle  -  " + (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'))
     if ($config.Junctions) {
         foreach ($j in $config.Junctions) {
-            if (Sync-PairToCloud -SourcePath $j.SourcePath -TargetRelativePath $j.TargetRelativePath) {
-                $ok++
-                Write-SyncLog ("  [ OK ] " + (Split-Path $j.SourcePath -Leaf))
+            $src = $j.SourcePath
+            $leaf = Split-Path $src -Leaf
+            # Absence-driven auto-restore: if the source is MISSING/empty (post-format) AND this
+            # pair has auto-restore on AND a backup exists -> restore it. NOT a login trigger.
+            $doAuto = $true
+            if ($j.PSObject.Properties.Name -contains 'AutoRestore') { $doAuto = [bool]$j.AutoRestore }
+            $missing = (-not (Test-Path $src)) -or ((Get-ChildItem $src -Force -ErrorAction SilentlyContinue | Measure-Object).Count -eq 0)
+            if ($missing -and $doAuto) {
+                if (Restore-PairFromCloud -SourcePath $src -TargetRelativePath $j.TargetRelativePath) {
+                    $restored++; Write-SyncLog ("  [RESTORE] " + $leaf + "  -  was missing, restored from backup")
+                } else {
+                    $fail++; Write-SyncLog ("  [FAIL] " + $leaf + "  -  restore failed")
+                }
+            } elseif (Sync-PairToCloud -SourcePath $src -TargetRelativePath $j.TargetRelativePath) {
+                $ok++; Write-SyncLog ("  [ OK ] " + $leaf)
             } else {
                 $fail++
-                # detailed reason is already logged by Sync-PairToCloud
             }
         }
     }
-    Write-SyncLog ("Done: $ok ok, $fail failed.")
-    Write-SyncStatus -Ok $ok -Fail $fail
-    return @{ Ok = $ok; Fail = $fail }
+    Write-SyncLog ("Done: $ok mirrored, $restored restored, $fail failed.")
+    Write-SyncStatus -Ok ($ok + $restored) -Fail $fail
+    return @{ Ok = ($ok + $restored); Fail = $fail }
 }
 
 
@@ -1676,25 +1687,7 @@ $importItem.BackColor = [System.Drawing.Color]::FromArgb(45, 45, 45)
 $importItem.ForeColor = [System.Drawing.Color]::White
 $importItem.Add_Click({ Import-JunctionConfig })
 
-$schedulingMenu = New-Object System.Windows.Forms.ToolStripMenuItem
-$schedulingMenu.Text = "Auto-Restore"
-$schedulingMenu.BackColor = [System.Drawing.Color]::FromArgb(45, 45, 45)
-$schedulingMenu.ForeColor = [System.Drawing.Color]::White
-
-$enableSchedulingItem = New-Object System.Windows.Forms.ToolStripMenuItem
-$enableSchedulingItem.Text = "Enable Auto-Restore on Login"
-$enableSchedulingItem.BackColor = [System.Drawing.Color]::FromArgb(45, 45, 45)
-$enableSchedulingItem.ForeColor = [System.Drawing.Color]::White
-$enableSchedulingItem.Add_Click({ Set-AutoRestoreSettings -Enable $true })
-
-$disableSchedulingItem = New-Object System.Windows.Forms.ToolStripMenuItem
-$disableSchedulingItem.Text = "Disable Auto-Restore on Login"
-$disableSchedulingItem.BackColor = [System.Drawing.Color]::FromArgb(45, 45, 45)
-$disableSchedulingItem.ForeColor = [System.Drawing.Color]::White
-$disableSchedulingItem.Add_Click({ Set-AutoRestoreSettings -Enable $false })
-
-$schedulingMenu.DropDownItems.Add($enableSchedulingItem)
-$schedulingMenu.DropDownItems.Add($disableSchedulingItem)
+# (Auto-Restore-on-Login menu removed - auto-restore is now absence-driven, inside the sync cycle.)
 
 # Right-click sync: a single STATE-AWARE toggle. Label + action reflect whether it's on,
 # and the label refreshes every time the Tools menu opens (always shows live state).
@@ -1753,8 +1746,6 @@ $toolsMenu.DropDownItems.Add("-")
 $toolsMenu.DropDownItems.Add($exportItem)
 $toolsMenu.DropDownItems.Add($importItem)
 $toolsMenu.DropDownItems.Add("-")
-$toolsMenu.DropDownItems.Add($schedulingMenu)
-$toolsMenu.DropDownItems.Add("-")
 $toolsMenu.DropDownItems.Add($rcMenu)
 $toolsMenu.DropDownItems.Add("-")
 $toolsMenu.DropDownItems.Add($logItem)
@@ -1789,23 +1780,81 @@ $btnBrowseSource.Size = New-Object System.Drawing.Size(90,25)
 $btnBrowseSource.Text = "Browse..."
 $form.Controls.Add($btnBrowseSource)
 
-# Home folder display (read-only) - where synced folders are stored
-$labelTarget = New-Object System.Windows.Forms.Label
-$labelTarget.Location = New-Object System.Drawing.Point(10,165)
-$labelTarget.Size = New-Object System.Drawing.Size(450,20)
-$labelTarget.Text = "Backups are stored in (your sync home folder):"
-$form.Controls.Add($labelTarget)
+# Synced folders list (the root folders you linked) + per-folder auto-restore toggle + remove.
+$labelFolders = New-Object System.Windows.Forms.Label
+$labelFolders.Location = New-Object System.Drawing.Point(10,165)
+$labelFolders.Size = New-Object System.Drawing.Size(490,20)
+$labelFolders.Text = "Synced folders (select one, then Toggle auto-restore or Remove):"
+$form.Controls.Add($labelFolders)
 
-$textTarget = New-Object System.Windows.Forms.TextBox
-$textTarget.Location = New-Object System.Drawing.Point(10,190)
-$textTarget.Size = New-Object System.Drawing.Size(440,22)
-$textTarget.ReadOnly = $true
-$textTarget.Text = (Get-ScriptDir)
-$form.Controls.Add($textTarget)
+$folderList = New-Object System.Windows.Forms.ListView
+$folderList.Location = New-Object System.Drawing.Point(10,190)
+$folderList.Size = New-Object System.Drawing.Size(490,110)
+$folderList.View = 'Details'
+$folderList.FullRowSelect = $true
+$folderList.MultiSelect = $false
+$folderList.Columns.Add('Folder', 350) | Out-Null
+$folderList.Columns.Add('Auto-Restore', 120) | Out-Null
+$form.Controls.Add($folderList)
+
+function Update-FolderList {
+    $folderList.BeginUpdate()
+    $folderList.Items.Clear()
+    $cfg = Get-JunctionConfig
+    if ($cfg.Junctions) {
+        foreach ($j in $cfg.Junctions) {
+            $leaf = Split-Path $j.SourcePath -Leaf
+            $ar = if ($j.PSObject.Properties.Name -contains 'AutoRestore') { [bool]$j.AutoRestore } else { $true }
+            $row = New-Object System.Windows.Forms.ListViewItem($leaf)
+            $row.SubItems.Add($(if ($ar) { 'ON' } else { 'OFF' })) | Out-Null
+            $folderList.Items.Add($row) | Out-Null
+        }
+    }
+    $folderList.EndUpdate()
+}
+Update-FolderList
+
+$btnToggle = New-Object System.Windows.Forms.Button
+$btnToggle.Location = New-Object System.Drawing.Point(250,305)
+$btnToggle.Size = New-Object System.Drawing.Size(150,26)
+$btnToggle.Text = "Toggle Auto-Restore"
+$btnToggle.Add_Click({
+    if ($folderList.SelectedItems.Count -eq 0) { [System.Windows.Forms.MessageBox]::Show("Select a folder first.","LRGEX","OK","Warning") | Out-Null; return }
+    $idx = $folderList.SelectedItems[0].Index
+    $cfg = Get-JunctionConfig
+    $pairs = @($cfg.Junctions)
+    if ($idx -ge $pairs.Count) { return }
+    $cur = if ($pairs[$idx].PSObject.Properties.Name -contains 'AutoRestore') { [bool]$pairs[$idx].AutoRestore } else { $true }
+    $pairs[$idx].AutoRestore = -not $cur
+    $cfg.Junctions = $pairs
+    $cfg | ConvertTo-Json -Depth 5 | Set-Content (Get-ConfigPath) -Encoding UTF8
+    Update-FolderList
+})
+$form.Controls.Add($btnToggle)
+
+$btnRemoveFolder = New-Object System.Windows.Forms.Button
+$btnRemoveFolder.Location = New-Object System.Drawing.Point(410,305)
+$btnRemoveFolder.Size = New-Object System.Drawing.Size(90,26)
+$btnRemoveFolder.Text = "Remove"
+$btnRemoveFolder.Add_Click({
+    if ($folderList.SelectedItems.Count -eq 0) { [System.Windows.Forms.MessageBox]::Show("Select a folder first.","LRGEX","OK","Warning") | Out-Null; return }
+    $idx = $folderList.SelectedItems[0].Index
+    $cfg = Get-JunctionConfig
+    $pairs = @($cfg.Junctions)
+    if ($idx -ge $pairs.Count) { return }
+    $leaf = Split-Path $pairs[$idx].SourcePath -Leaf
+    if ([System.Windows.Forms.MessageBox]::Show("Remove '$leaf' from the sync list?`n(The backup copy in your home folder is NOT deleted.)","Remove","YesNo","Question") -ne [System.Windows.Forms.DialogResult]::Yes) { return }
+    $kept = @()
+    for ($k = 0; $k -lt $pairs.Count; $k++) { if ($k -ne $idx) { $kept += $pairs[$k] } }
+    $cfg.Junctions = $kept
+    $cfg | ConvertTo-Json -Depth 5 | Set-Content (Get-ConfigPath) -Encoding UTF8
+    Update-FolderList
+})
+$form.Controls.Add($btnRemoveFolder)
 
 # Status label for messages
 $statusLabel = New-Object System.Windows.Forms.Label
-$statusLabel.Location = New-Object System.Drawing.Point(10,230)
+$statusLabel.Location = New-Object System.Drawing.Point(10,335)
 $statusLabel.Size = New-Object System.Drawing.Size(490,45)
 $statusLabel.ForeColor = [System.Drawing.Color]::DarkBlue
 $statusLabel.AutoSize = $false
@@ -1814,40 +1863,24 @@ $form.Controls.Add($statusLabel)
 
 # Button to Create Junction
 $btnCreate = New-Object System.Windows.Forms.Button
-$btnCreate.Location = New-Object System.Drawing.Point(120,295)
+$btnCreate.Location = New-Object System.Drawing.Point(120,388)
 $btnCreate.Size = New-Object System.Drawing.Size(120,35)
-$btnCreate.Text = "Create Junction"
+$btnCreate.Text = "Link Folder"
 $btnCreate.UseVisualStyleBackColor = $true
 $form.Controls.Add($btnCreate)
 
 # Button to Restore Junctions
 $btnRestore = New-Object System.Windows.Forms.Button
-$btnRestore.Location = New-Object System.Drawing.Point(250,295)
+$btnRestore.Location = New-Object System.Drawing.Point(250,388)
 $btnRestore.Size = New-Object System.Drawing.Size(120,35)
 $btnRestore.Text = "Restore Saved"
 $btnRestore.UseVisualStyleBackColor = $true
 $form.Controls.Add($btnRestore)
 
 # Scheduling status label
-$schedulingStatus = New-Object System.Windows.Forms.Label
-$schedulingStatus.Location = New-Object System.Drawing.Point(10,355)
-$schedulingStatus.Size = New-Object System.Drawing.Size(490,20)
-$schedulingStatus.ForeColor = [System.Drawing.Color]::FromArgb(45, 45, 45)
-$schedulingStatus.Font = New-Object System.Drawing.Font("Microsoft Sans Serif", 8, [System.Drawing.FontStyle]::Italic)
-if (Test-AutoRestoreSettings) {
-    $schedulingStatus.Text = "[ENABLED] Auto-restore on login: ENABLED (restores only after a format)"
-} else {
-    $schedulingStatus.Text = "[DISABLED] Auto-restore on login: DISABLED"
-}
-$form.Controls.Add($schedulingStatus)
+# (Auto-Restore-on-Login status label removed - see the health lamp / sync log.)
 
-# Info label
-$infoLabel = New-Object System.Windows.Forms.Label
-$infoLabel.Location = New-Object System.Drawing.Point(10,375)
-$infoLabel.Size = New-Object System.Drawing.Size(490,60)
-$infoLabel.Text = "Tip: All settings are saved in the JSON config inside your sync home folder.`nAfter PC formatting, use 'Restore Saved' to restore all folders.`nUse Tools menu for health checks, removal, backup/restore configs, and auto-restore."
-$infoLabel.ForeColor = [System.Drawing.Color]::FromArgb(45, 45, 45)
-$form.Controls.Add($infoLabel)
+# (Info label removed - the health lamp + folder list convey status.)
 
 # Browse Source folder
 $btnBrowseSource.Add_Click({
@@ -1884,6 +1917,7 @@ $btnCreate.Add_Click({
     $arText = if ($ar) { "auto-restore ON" } else { "auto-restore OFF" }
     try {
         Save-JunctionConfig -sourcePath $sourcePath -autoRestore $ar
+        Update-FolderList   # refresh the folder list
         if (Sync-PairToCloud -SourcePath $sourcePath) {
             Set-SyncTask -Enable $true
             $statusLabel.ForeColor = [System.Drawing.Color]::Green
@@ -1905,7 +1939,7 @@ $btnRestore.Add_Click({
 
 # --- Health lamp: live status of the continuous sync task (so you're never blind) ---
 $healthLamp = New-Object System.Windows.Forms.Label
-$healthLamp.Location = New-Object System.Drawing.Point(10,445)
+$healthLamp.Location = New-Object System.Drawing.Point(10,432)
 $healthLamp.Size = New-Object System.Drawing.Size(490,26)
 $healthLamp.Font = New-Object System.Drawing.Font("Segoe UI",10,[System.Drawing.FontStyle]::Bold)
 $healthLamp.TextAlign = 'MiddleLeft'
@@ -1927,5 +1961,5 @@ Update-HealthLamp
 $healthTimer.Start()
 
 # Show the form
-$form.Add_Shown({$form.Activate()})
+$form.Add_Shown({ Update-FolderList; $form.Activate() })
 [void]$form.ShowDialog()

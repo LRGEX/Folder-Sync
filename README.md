@@ -1,146 +1,141 @@
-
 <div align="center">
-<img src="https://download.lrgex.com/Dark%20Full%20Logo.png" alt="LRGEX Logo" width="300">
+  <img src="https://download.lrgex.com/Dark%20Full%20Logo.png" alt="LRGEX Logo" width="300">
 
-# LRGEX Folder Sync
-*Back up any folder to **any** cloud — OneDrive, Google Drive, Mega, Dropbox, iCloud — and restore it to its exact original path after a PC format.*
+  # LRGEX Folder Sync
+
+  **Version 0.7.0**
+
 </div>
 
 ---
 
-## What It Does
+## Description
 
-**LRGEX Folder Sync** backs up your important folders (game saves, app data, dev projects — anything in a fixed location) into a folder YOU choose, then **restores them to their exact original paths** after a PC format.
+LRGEX Folder Sync is a PowerShell Windows Forms app that mirrors arbitrary local folders (game saves, app data, dev projects) into a folder you choose, so they survive a PC format, then restores them to their exact original paths automatically.
 
-- **Cloud-agnostic** — pick OneDrive, Google Drive, Mega, Dropbox, iCloud, or even a local folder. Cloud is *recommended* (survives a format), never *required*.
-- **Copy-only** — your data is **never deleted** from either side.
-- **Continuous** — a background task mirrors new/changed files automatically (default every **2 hours**; configurable).
-- **Right-click** — link any folder from File Explorer in one click. No admin prompt.
-- **One-click restore** — after a format, every folder goes back to exactly where it was.
+It is fully cloud-agnostic: pick OneDrive, Google Drive, Mega, Dropbox, iCloud, or a local folder. Cloud is recommended (survives a format), never required. It syncs continuously, is copy-only (never deletes), and adds a right-click menu so linking a folder takes one click.
+
+The tool does NOT use NTFS junctions or mklink. It copies real files into your chosen folder with robocopy, which any cloud service syncs reliably.
 
 ---
 
-## Quick Start (3 Steps)
+## Features
 
-### Step 1 — Get & Run the Script
-Download `folder-sync.ps1` (it's the **entire app** — one file, no installer).
-
-```powershell
-# If Windows blocks it (SmartScreen / execution policy):
-PowerShell.exe -ExecutionPolicy Bypass -File ".\folder-sync.ps1"
-```
-
-On first run, it asks **once**: *"Pick the folder where LRGEX sync will live."*
-- **Pick your cloud folder** (e.g. your OneDrive, MEGA, Google Drive folder).
-- The script copies itself there + creates a config. This becomes your **sync home**.
-- Everything (script, config, backups) lives in this one folder.
-
-### Step 2 — Enable Right-Click
-Open the app → **Tools → Right-Click Sync → click it** (it shows ON/OFF).
-- This adds *"Sync folder (LRGEX)"* to your File Explorer right-click menu.
-- This is ONLY the context menu entry — it does **not** control the background sync (they're independent).
-
-### Step 3 — Link Folders
-**Right-click any folder** → *"Sync folder (LRGEX)"*.
-- The folder is **copied into your sync home** (immediately).
-- A confirmation appears. You're asked: *"Enable auto-restore for this folder after a format?"* (Yes/No).
-- The folder appears in the app's **synced-folders list** (within 30 seconds).
-- New/changed files sync automatically every **2 hours** (or whatever interval you set).
-
-**Done.** Keep working. Your files back up automatically.
+- **Cloud-agnostic** — OneDrive, Google Drive, Mega, Dropbox, iCloud, or local. You pick the folder.
+- **Copy-only / never deletes** — no /MIR, no /PURGE. Nothing is ever removed from either side.
+- **Right-click to sync** — right-click any folder in File Explorer, select "Sync folder (LRGEX)", done. No admin prompt.
+- **Continuous background sync** — a scheduled task mirrors new/changed files automatically (default every 2 hours, configurable).
+- **Absence-driven auto-restore** — the sync cycle restores a folder only when its source is missing or empty (the post-format signal). No login trigger.
+- **Health lamp** — green (sync OK) / amber (syncing now) / red (problem with reason). Live, refreshes every 30 seconds.
+- **Sync log** — Tools menu, View Sync Log: readable history of every cycle, including failure reasons.
+- **Synced-folders list** — every linked folder shown in the main UI with per-folder Auto-Restore status (ON/OFF). Toggle or remove per folder.
+- **Exclude subfolders** — Tools menu, Manage Exclusions: skip app-locked runtime subfolders (e.g. pending_messages) via robocopy /XD.
+- **Invisible background sync** — runs via a VBS launcher (wscript.exe). No console window flash.
+- **Self-healing task** — if the sync task is stale or missing, it is recreated automatically when the app opens.
+- **Custom LRGEX icon** in the right-click context menu (auto-downloads on other PCs).
+- **One file** — folder-sync.ps1 is the entire app. No installer, no dependencies beyond Windows 10/11.
 
 ---
 
-## After a PC Format — Restore
+## Installation
 
-1. Reinstall your cloud service (OneDrive/MEGA/etc.) → let it download your sync home folder.
-2. Open `folder-sync.ps1` from the sync home.
-3. Click **Restore Saved** → select the folders → **Restore**.
-4. Every folder is copied back to its **exact original path**.
+1. Download `folder-sync.ps1` (this single file is the whole app).
+2. Run it:
+   ```
+   PowerShell.exe -ExecutionPolicy Bypass -File ".\folder-sync.ps1"
+   ```
+   If Windows shows a SmartScreen warning, click "Run anyway" (the script is unsigned).
+3. On first run, it asks once: "Pick the folder where LRGEX sync will live." Choose your cloud folder (e.g. your OneDrive, MEGA, or Google Drive folder). The script copies itself there and creates a config. This becomes your sync home.
+4. Open the app from the sync home, then go to Tools, Right-Click Sync, click it to enable. This adds "Sync folder (LRGEX)" to your File Explorer right-click menu.
 
-**OR** — if auto-restore is ON for a folder: the background sync detects the folder is missing and **restores it automatically** (no manual action needed).
+---
+
+## Usage
+
+### Link a folder (backup it)
+Right-click any folder in File Explorer, select "Sync folder (LRGEX)".
+- The folder is copied into your sync home immediately.
+- You are asked: "Enable auto-restore for this folder after a format?" (Yes/No).
+- The folder appears in the app's synced-folders list within 30 seconds.
+- New and changed files sync automatically every 2 hours (or whatever interval you set).
+
+Alternatively, use the app's GUI: type or browse for a folder in the Source box, then click "Link Folder".
+
+### What happens when you delete files
+- Delete some files (1+ left in the folder): they stay deleted in the source. The backup keeps them (archive behavior). They do NOT come back.
+- Delete ALL files (folder empty): if Auto-Restore is ON for that folder, the next sync cycle restores everything from the backup automatically.
+- Want permanent deletion: toggle Auto-Restore OFF, delete from the source, then manually delete from the backup folder in your sync home.
+
+### Restore after a format
+1. Reinstall your cloud service (OneDrive/MEGA/etc.) and let it download your sync home folder.
+2. Open folder-sync.ps1 from the sync home.
+3. Click "Restore Saved", select the folders, click "Restore".
+4. Every folder is copied back to its exact original path.
+
+If Auto-Restore is ON for a folder: the background sync detects the folder is missing and restores it automatically (no manual action needed).
+
+### Change the sync interval
+Tools, Set Sync Interval, enter minutes (e.g. 120 = every 2 hours, 5 = every 5 minutes). Default is 120.
+
+### Exclude app-locked subfolders
+Tools, Manage Exclusions, type subfolder names to skip (one per line). Useful for runtime folders that apps lock (e.g. Hermes's pending_messages).
+
+### Give it to a friend
+Send them folder-sync.ps1. They run it, pick their cloud folder, enable right-click, and start linking folders. The icon and logo auto-download. No manual setup beyond picking a folder.
 
 ---
 
 ## The Main Window
 
-| Element | What it shows |
+| Element | Purpose |
 |---|---|
-| **Folder Sync** (title) | App name (hero font) + version number below it. |
-| **Health lamp** | 🟢 green = sync OK / 🟡 amber = syncing now / 🔴 red = problem (with the reason). Refreshes every 30 seconds. |
-| **Synced folders list** | Every folder you've linked, with its **Auto-Restore** status (ON/OFF). Select one to see its path in the Source box. |
-| **Toggle Auto-Restore** | Flips the selected folder's auto-restore ON/OFF. |
-| **Remove** | Removes the selected folder from the sync list (backup copy is NOT deleted). |
-| **Source folder** box | Type or Browse to pick a folder to link, then click **Link Folder**. |
-| **Link Folder** button | Links the folder in the Source box + mirrors it immediately + asks auto-restore. |
-| **Restore Saved** button | Opens the restore dialog (select folders to restore). |
+| Folder Sync (title) | App name + version number. |
+| Health lamp | Green = sync OK, amber = syncing now, red = problem (with reason). |
+| Synced folders list | Every linked folder with its Auto-Restore status (ON/OFF). |
+| Toggle Auto-Restore | Flips the selected folder's auto-restore ON/OFF. |
+| Remove | Removes the selected folder from the sync list (backup NOT deleted). |
+| Source folder box | Type or Browse to pick a folder, then click Link Folder. |
+| Link Folder | Links the folder + mirrors it immediately + asks auto-restore. |
+| Restore Saved | Opens the restore dialog (select folders to restore). |
 
----
-
-## Tools Menu (Everything Explained)
-
-| Menu Item | What it does |
+### Tools menu
+| Item | Purpose |
 |---|---|
-| **View Sync Log** | Shows a readable log of every sync cycle: which folders synced OK/FAIL + the reason if something failed. |
-| **Set Sync Interval…** | Change how often the background sync runs. Default = **120 min** (2 hours). Enter any number of minutes (e.g. `5` for every 5 min, `60` for hourly). |
-| **Manage Exclusions…** | List subfolder names to SKIP during sync (e.g. `pending_messages` for app-locked runtime folders). One per line. robocopy skips them via `/XD`. |
-| **Right-Click Sync** | Enable/Disable the *"Sync folder (LRGEX)"* File Explorer context menu entry. **This is ONLY the registry entry — it does NOT start/stop the background sync task.** |
-| **Export Configuration** | Save your folder list to a JSON file (backup). |
-| **Import Configuration** | Load a previously exported folder list. |
-| **Remove** | Remove linked folders (backup copies are NOT deleted). |
-| **Health Check** | *(Legacy from the junction era — still functional but mostly informational.)* |
+| View Sync Log | Readable history of every sync cycle + failure reasons. |
+| Set Sync Interval | Change how often the background sync runs (default 120 min). |
+| Manage Exclusions | List subfolder names to skip during sync. |
+| Right-Click Sync | Enable/Disable the File Explorer context menu entry (registry only, does NOT affect the sync task). |
+| Export Configuration | Save your folder list to a JSON file. |
+| Import Configuration | Load a previously exported folder list. |
+| Remove | Remove linked folders (backup copies NOT deleted). |
 
 ---
 
-## How Sync Works (Explained)
+## Requirements
 
-### Backup direction (source → home)
-Every sync cycle, the app runs `robocopy` to **copy** new/changed files from each linked folder INTO your sync home. It uses:
-- `/E` — copy all subdirectories (including empty ones).
-- `/XJ` — skip junctions/symlinks (don't follow them).
-- `/R:5 /W:5` — retry locked files 5 times (5 seconds apart).
-- **NO `/MIR`, NO `/PURGE`** — **nothing is ever deleted** from either side.
-
-### What happens when you delete a file?
-| What you delete | Source | Home backup | Comes back? |
-|---|---|---|---|
-| **Some files** (1+ left) | stays deleted ✅ | keeps them (archive) | **NO** |
-| **All files** (folder empty) | auto-restored from backup | keeps them | **YES** (if Auto-Restore is ON) |
-| **Want permanent delete** | toggle Auto-Restore OFF → delete → manually delete from home backup | cleaned | gone for good |
-
-### Auto-restore (absence-driven)
-Auto-restore is **NOT** on a timer or login trigger. It happens **inside the sync cycle**: for each folder with Auto-Restore ON, if the source folder is **missing or empty** (the post-format signal), it's restored from the backup automatically. On normal logins (folders present), **nothing happens** — a complete no-op.
-
-### Background sync task
-- Runs via a **VBS launcher** (`wscript.exe`) — **truly invisible** (no console window flash).
-- **Self-healing**: every time you open the app, it checks the task exists + points to a valid path. If stale (old home deleted) → recreates it.
-- **Independent from right-click**: enabling/disabling the right-click menu does NOT affect the sync task.
-- Default interval: **120 minutes**. Change via Tools → Set Sync Interval.
+- Windows 10/11 (NTFS)
+- A cloud service is recommended (OneDrive, Google Drive, Mega, Dropbox, or iCloud) so backups survive a format. Not required: a local folder works but will not survive a format.
+- PowerShell 5.1+ (built into Windows 10/11)
+- Admin is requested automatically only for the GUI. Right-click and background sync run without admin prompts.
 
 ---
 
-## ⚠️ Important: Unique Folder Names
+## Important: Unique Folder Names
 
-The backup copy is named after the **folder's own name** (the last part of its path), not its full path:
+The backup copy is named after the folder's own name (the last part of its path), not its full path. Each linked folder must have a unique name:
 
-- ✅ `C:\Users\you\Saved Games\Cyberpunk` → backed up as `Cyberpunk`
-- ✅ `C:\Users\you\Saved Games\Witcher3` → backed up as `Witcher3`
-- ⚠️ Two folders named `data` on different paths would clash. Use unique names.
+- C:\Users\you\Saved Games\Cyberpunk is backed up as Cyberpunk
+- C:\Users\you\Saved Games\Witcher3 is backed up as Witcher3
+- Two folders both named "data" on different paths would clash
 
----
-
-## Use Cases
-
-- **Game saves** — back up saves in `%AppData%`, `Saved Games`, etc. Restore after reinstalling.
-- **App data** — sync settings/profile folders at fixed system paths.
-- **Dev projects** — keep `source\repos` backed up automatically.
-- **Any folder** — mirror anything important without moving it.
+Game saves, app data, and repos almost always have distinct names.
 
 ---
 
 ## Configuration
 
-Stored in `junction-config.json`, **next to the script** (in your sync home):
+Stored in `junction-config.json`, next to the script (in your sync home):
+
 ```json
 {
   "Junctions": [
@@ -154,27 +149,19 @@ Stored in `junction-config.json`, **next to the script** (in your sync home):
   "ExcludedNames": ["pending_messages"]
 }
 ```
+
 | Field | Meaning |
 |---|---|
-| `SourcePath` | The **original full path** — restore puts files back exactly here. |
-| `AutoRestore` | Per-folder opt-in for absence-driven auto-restore (ON/OFF). |
-| `SyncIntervalMinutes` | Background sync interval (default 120). |
-| `ExcludedNames` | Subfolder names to skip during sync (app-locked folders). |
+| SourcePath | The original full path. Restore puts files back exactly here. |
+| AutoRestore | Per-folder opt-in for absence-driven auto-restore (true/false). |
+| SyncIntervalMinutes | Background sync interval in minutes (default 120). |
+| ExcludedNames | Subfolder names to skip during sync. |
 
 ---
 
-## System Requirements
+## Safety
 
-- **Windows 10/11** (NTFS)
-- **A cloud service recommended** (OneDrive, Google Drive, Mega, Dropbox, iCloud) — but **not required** (local folder works, just won't survive a format)
-- **PowerShell 5.1+** (built into Windows 10/11)
-- **Admin** — requested automatically **only for the GUI**. Right-click and background sync run **without** admin prompts.
-
----
-
-## Safety Guarantees
-
-- **Copy-only everywhere** — no `/MIR`, no `/PURGE`. Nothing is ever deleted.
+- **Copy-only everywhere** — no /MIR, no /PURGE. Nothing is ever deleted.
 - **Archive behavior** — deleting a file locally keeps it in the backup (survives accidental deletes).
 - **Right-click is UAC-free** — no admin prompt on each use.
 - **Restore is exact** — every folder goes back to its recorded original path.
@@ -182,15 +169,14 @@ Stored in `junction-config.json`, **next to the script** (in your sync home):
 
 ---
 
-## Giving It to a Friend
+## License
 
-Just send them **`folder-sync.ps1`** — that's the entire app. They:
-1. Run it → pick their cloud folder → done.
-2. Enable right-click (Tools menu) → right-click any folder → synced.
-3. The icon + logo auto-download from the web. No manual setup.
+This project is licensed under the MIT License. See [LICENSE](LICENSE).
 
 ---
 
-**Version:** 0.7.0
-**Developer:** LRGEX
-**License:** MIT (see [LICENSE](LICENSE))
+## Contributing
+
+This is an LRGEX project. For issues, suggestions, or contributions, contact LRGEX.
+
+See [patchnotes.md](patchnotes.md) for the full changelog.

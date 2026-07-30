@@ -1058,7 +1058,7 @@ function Get-SyncHealth {
 
 <#
 .SYNOPSIS
-    Appends a timestamped line to the sync log (inside the home folder). Capped at 2000 lines.
+    Appends a timestamped line to the sync log (in %LOCALAPPDATA%\LRGEX, NOT the home folder to avoid cloud churn). Capped at 2000 lines.
 .DESCRIPTION
     Called by Sync-AllPairs / restore so the user has a readable history. To stop the log
     growing unbounded (the task fires every ~120 min), it is trimmed to the last 2000 lines.

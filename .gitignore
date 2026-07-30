@@ -16,5 +16,9 @@
 # AGENT.md is private (dev guidance, NOT for public)
 AGENT.md
 
+# Dev guidelines + sample config (NOT for public)
+LRGEX-PowerShell-Guidelines.md
+junction-config.json
+
 # Allow this gitignore file
 !.gitignore

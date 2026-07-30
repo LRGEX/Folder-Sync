@@ -11,5 +11,10 @@
 !README.md
 !patchnotes.md
 
+!LICENSE
+
+# AGENT.md is private (dev guidance, NOT for public)
+AGENT.md
+
 # Allow this gitignore file
 !.gitignore

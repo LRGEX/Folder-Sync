@@ -1,24 +1,19 @@
-# LRGEX Project .gitignore
-# Ignore everything except the main script
+# LRGEX Folder Sync — Rust edition
 
-# Ignore everything by default
-*
+# Build artifacts
+/target/
+.cache/
+*.pdb
+**/*.rs.bk
 
-# Allow only the main script
-!folder-sync.ps1
-
-# Allow documentation
-!README.md
-!patchnotes.md
-
-!LICENSE
-
-# AGENT.md is private (dev guidance, NOT for public)
+# Private files (NOT for public repo)
 AGENT.md
-
-# Dev guidelines + sample config (NOT for public)
-LRGEX-PowerShell-Guidelines.md
 junction-config.json
+sync.log
+sync-status.json
+.lrgex-home
 
-# Allow this gitignore file
-!.gitignore
+# OS junk
+Thumbs.db
+desktop.ini
+.DS_Store

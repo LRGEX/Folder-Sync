@@ -706,7 +706,7 @@ function Save-JunctionConfig {
     # per-pair opt-in for post-format auto-restore (asked at link time).
     $newJunction = @{
         SourcePath = $sourcePath
-        AutoRestore = [bool]$autoRestore
+        AutoRestore = (ConvertTo-Bool $autoRestore)
         Created = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
     }
     
@@ -1204,8 +1204,12 @@ function Set-SyncTask {
 
             # Argument built by concatenation (the old backtick-escaped quotes corrupted the
             # stored action -> "-File $" -> error 267 "directory invalid").
-            $arg = '-WindowStyle Hidden -NoProfile -ExecutionPolicy Bypass -File "' + $scriptPath + '" -Sync'
-            $action = New-ScheduledTaskAction -Execute "PowerShell.exe" -Argument $arg
+            # VBS launcher: wscript.exe has NO console -> PowerShell runs TRULY hidden.
+            # (-WindowStyle Hidden alone still flashes a console window for a split second.)
+            $vbsPath = Join-Path (Split-Path $scriptPath -Parent) 'sync-runner.vbs'
+            $vbsLine = 'CreateObject("WScript.Shell").Run "powershell.exe -WindowStyle Hidden -NoProfile -ExecutionPolicy Bypass -File ""' + $scriptPath + '"" -Sync", 0, False'
+            Set-Content -Path $vbsPath -Value $vbsLine -Encoding ASCII -ErrorAction SilentlyContinue
+            $action = New-ScheduledTaskAction -Execute 'wscript.exe' -Argument ('"' + $vbsPath + '"')
             # TWO triggers (you cannot reliably attach a repetition to -AtLogon directly):
             #  1) AtLogon         -> fires on every login (incl. after a format)
             #  2) Once-now+repeat -> the continuous ticker (every IntervalMinutes, indefinitely)

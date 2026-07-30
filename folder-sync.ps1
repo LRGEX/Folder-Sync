@@ -654,7 +654,7 @@ function Restore-PairFromCloud {
 #>
 function Sync-AllPairs {
     $config = Get-JunctionConfig
-    $ok = 0; $fail = 0; $restored = 0
+    $ok = 0; $fail = 0; $restored = 0; $restoredNames = @()
     Write-SyncLog ('------------------------------------------------------------')
     Write-SyncLog ("Sync cycle  -  " + (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'))
     if ($config.Junctions) {
@@ -668,7 +668,7 @@ function Sync-AllPairs {
             $missing = (-not (Test-Path $src)) -or ((Get-ChildItem $src -Force -ErrorAction SilentlyContinue | Measure-Object).Count -eq 0)
             if ($missing -and $doAuto) {
                 if (Restore-PairFromCloud -SourcePath $src -TargetRelativePath $j.TargetRelativePath) {
-                    $restored++; Write-SyncLog ("  [RESTORE] " + $leaf + "  -  was missing, restored from backup")
+                    $restored++; $restoredNames += $leaf; Write-SyncLog ("  [RESTORE] " + $leaf + "  -  was missing, restored from backup")
                 } else {
                     $fail++; Write-SyncLog ("  [FAIL] " + $leaf + "  -  restore failed")
                 }
@@ -680,7 +680,7 @@ function Sync-AllPairs {
         }
     }
     Write-SyncLog ("Done: $ok mirrored, $restored restored, $fail failed.")
-    Write-SyncStatus -Ok ($ok + $restored) -Fail $fail
+    Write-SyncStatus -Ok ($ok + $restored) -Fail $fail -Restored $restored -RestoredNames $restoredNames
     return @{ Ok = ($ok + $restored); Fail = $fail }
 }
 
@@ -1047,6 +1047,7 @@ function Get-SyncHealth {
         try {
             $s = Get-Content $sp -Raw | ConvertFrom-Json
             if ($s.Fail -gt 0) { return @{ Status='RED'; Label='SYNC HAD FAILURES'; Reason="$($s.Fail) folder(s) failed last sync - see View Sync Log" } }
+            if ($s.Restored -gt 0) { return @{ Status='GREEN'; Label='RESTORED ' + $s.Restored + ' folder(s)'; Reason="auto-restored: $($s.RestoredNames)  (sync OK)" } }
             return @{ Status='GREEN'; Label='SYNC OK'; Reason="Last sync $($s.LastSync) - $($s.Ok) folder(s) OK" }
         } catch { }
     }
@@ -1087,12 +1088,12 @@ function Write-SyncLog {
     Opens a readable window showing the sync log (tail).
 #>
 function Write-SyncStatus {
-    param([int]$Ok, [int]$Fail)
+    param([int]$Ok, [int]$Fail, [int]$Restored = 0, $RestoredNames = @())
     try {
         $dir = Join-Path $env:LOCALAPPDATA 'LRGEX'
         if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
         $path = Join-Path $dir 'sync-status.json'
-        @{ LastSync = (Get-Date).ToString('yyyy-MM-dd HH:mm:ss'); Ok = $Ok; Fail = $Fail } | ConvertTo-Json -Compress | Set-Content $path -Encoding UTF8
+        @{ LastSync = (Get-Date).ToString('yyyy-MM-dd HH:mm:ss'); Ok = $Ok; Fail = $Fail; Restored = $Restored; RestoredNames = ($RestoredNames -join ', ') } | ConvertTo-Json -Compress | Set-Content $path -Encoding UTF8
     } catch { }
 }
 

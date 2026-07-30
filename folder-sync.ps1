@@ -291,7 +291,7 @@ Add-Type -AssemblyName System.Drawing
 # Web-based logo/icon configuration
 $script:LogoUrl = "https://download.lrgex.com/Light%20Full%20logo.png"
 $script:IconUrl = "https://download.lrgex.com/bigx-dark-icon.ico"
-$script:AppVersion = '0.5.9'
+$script:AppVersion = '0.6.0'
 
 function Get-WebAsset {
     param(
@@ -578,7 +578,14 @@ function Sync-PairToCloud {
         $parent = Split-Path $cloud -Parent
         if (-not (Test-Path $parent)) { New-Item -ItemType Directory -Path $parent -Force | Out-Null }
         # Capture robocopy output to a temp log so failures can be EXPLAINED in the sync log.
-        robocopy.exe "$SourcePath" "$cloud" /E /XJ /NFL /NDL /NJH /NJS /NP /R:5 /W:5 /LOG:"$tmpLog" | Out-Null
+        # /XD: skip app-locked runtime subfolders listed in config (ExcludedNames).
+        # Build args as an array + splat so /XD + names are separate tokens (string concat broke robocopy).
+        $names = @()
+        try { $cfgX = Get-JunctionConfig; if ($cfgX.PSObject.Properties.Name -contains 'ExcludedNames' -and $cfgX.ExcludedNames) { $names = @($cfgX.ExcludedNames | Where-Object { $_ -and $_.Trim() -ne '' } | ForEach-Object { $_.Trim() }) } } catch { }
+        $rcArgs = @("$SourcePath", "$cloud", '/E', '/XJ', '/NFL', '/NDL', '/NJH', '/NJS', '/NP', '/R:5', '/W:5')
+        if ($names.Count) { $rcArgs += '/XD'; $rcArgs += $names }
+        $rcArgs += "/LOG:$tmpLog"
+        & robocopy.exe @rcArgs
         $code = $LASTEXITCODE
         if ($code -lt 8) { return $true }
         # Failure: capture the human reason (e.g. "Access is denied.") for a clean log line.
@@ -1076,6 +1083,44 @@ function Write-SyncStatus {
         $path = Join-Path $dir 'sync-status.json'
         @{ LastSync = (Get-Date).ToString('yyyy-MM-dd HH:mm:ss'); Ok = $Ok; Fail = $Fail } | ConvertTo-Json -Compress | Set-Content $path -Encoding UTF8
     } catch { }
+}
+
+function Show-Exclusions {
+    Add-Type -AssemblyName System.Windows.Forms
+    $cfg = Get-JunctionConfig
+    $cur = if ($cfg.PSObject.Properties.Name -contains 'ExcludedNames' -and $cfg.ExcludedNames) { ($cfg.ExcludedNames -join "`r`n") } else { '' }
+    $f = New-Object System.Windows.Forms.Form
+    $f.Text = "Manage Exclusions"
+    $f.Size = New-Object System.Drawing.Size(520,420)
+    $f.StartPosition = "CenterScreen"
+    $f.TopMost = $true
+    $lbl = New-Object System.Windows.Forms.Label
+    $lbl.Location = New-Object System.Drawing.Point(10,10)
+    $lbl.Size = New-Object System.Drawing.Size(480,45)
+    $lbl.Text = "Subfolder NAMES to SKIP while syncing (one per line).`nUse for app-locked runtime folders (e.g. pending_messages). Matching subfolders are not backed up."
+    $f.Controls.Add($lbl)
+    $tb = New-Object System.Windows.Forms.TextBox
+    $tb.Location = New-Object System.Drawing.Point(10,60)
+    $tb.Size = New-Object System.Drawing.Size(480,280)
+    $tb.Multiline = $true
+    $tb.ScrollBars = 'Vertical'
+    $tb.Font = New-Object System.Drawing.Font("Consolas",9)
+    $tb.Text = $cur
+    $f.Controls.Add($tb)
+    $btnSave = New-Object System.Windows.Forms.Button
+    $btnSave.Location = New-Object System.Drawing.Point(380,348)
+    $btnSave.Size = New-Object System.Drawing.Size(110,28)
+    $btnSave.Text = "Save"
+    $btnSave.Add_Click({
+        $names = $tb.Text -split "`r`n|`n" | Where-Object { $_ -and $_.Trim() -ne '' } | ForEach-Object { $_.Trim() }
+        if ($cfg.PSObject.Properties.Name -contains 'ExcludedNames') { $cfg.ExcludedNames = $names }
+        else { $cfg | Add-Member -NotePropertyName ExcludedNames -NotePropertyValue $names -Force }
+        $cfg | ConvertTo-Json -Depth 5 | Set-Content (Get-ConfigPath) -Encoding UTF8
+        [System.Windows.Forms.MessageBox]::Show("Exclusions saved.","Exclusions","OK","Information") | Out-Null
+        $f.Close()
+    })
+    $f.Controls.Add($btnSave)
+    [void]$f.ShowDialog()
 }
 
 function Show-SyncLog {
@@ -1714,6 +1759,13 @@ $toolsMenu.DropDownItems.Add($rcMenu)
 $toolsMenu.DropDownItems.Add("-")
 $toolsMenu.DropDownItems.Add($logItem)
 $toolsMenu.DropDownItems.Add($intervalItem)
+
+$exclItem = New-Object System.Windows.Forms.ToolStripMenuItem
+$exclItem.Text = "Manage Exclusions..."
+$exclItem.BackColor = [System.Drawing.Color]::FromArgb(45, 45, 45)
+$exclItem.ForeColor = [System.Drawing.Color]::White
+$exclItem.Add_Click({ Show-Exclusions })
+$toolsMenu.DropDownItems.Add($exclItem)
 
 $menuStrip.Items.Add($toolsMenu)
 $form.Controls.Add($menuStrip)

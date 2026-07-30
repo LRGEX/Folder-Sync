@@ -1,5 +1,8 @@
 # Patch Notes — LRGEX Folder Sync
 
+## v0.6.0
+- **Exclude feature**: Tools → Manage Exclusions — list subfolder NAMES to skip during sync (e.g. `pending_messages`). robocopy runs with `/XD` for those names, so app-locked runtime folders no longer cause false failures. Resolves the `hermes\pending_messages` access-denied case (Hermes locks that folder; it's empty, so excluding it loses nothing and the lamp goes green).
+
 ## v0.5.9
 - **Cleaner sync log**: each cycle now has a header and tidy `[ OK ] / [FAIL] <folder> - <reason>` lines (previously verbose). Failures show the human reason (e.g. `Access is denied.`), de-duplicated across robocopy retries.
 - **Rebrand**: "Junction Sync Tool" → **"Folder Sync"** everywhere (window title, header, user-agent).

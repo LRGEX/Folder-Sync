@@ -73,10 +73,16 @@ function Get-CloudRootSuggestion {
     $user = $env:USERPROFILE
     if ($user) {
         $candidates += (Join-Path $user 'Google Drive')
+        $candidates += (Join-Path $user 'GoogleDrive')
         $candidates += (Join-Path $user 'MEGA')
+        $candidates += (Join-Path $user 'MEGA Sync')
         $candidates += (Join-Path $user 'Dropbox')
+        $candidates += (Join-Path $user 'Dropbox (Personal)')
         $candidates += (Join-Path $user 'iCloudDrive')
     }
+    # Some clouds (esp. MEGA) use custom locations
+    $candidates += 'C:\MEGA'
+    $candidates += (Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'MEGA')
     foreach ($c in $candidates) {
         if ($c -and (Test-Path $c)) { return $c }
     }
@@ -173,7 +179,7 @@ function Test-AndRelocateScript {
     $underCloud = $false
     if ($cloudRoot -and $homeFolder.StartsWith($cloudRoot, [System.StringComparison]::OrdinalIgnoreCase)) { $underCloud = $true }
     if (-not $underCloud) {
-        $msg = "This folder does not appear to be inside a cloud-synced location (OneDrive / Google Drive / Mega / Dropbox / iCloud).`n`nBackups stored here will NOT sync automatically and will NOT survive a PC format.`n`nUse this folder anyway?"
+        $msg = "This folder doesn't match a KNOWN cloud path (OneDrive / Google Drive / Mega / Dropbox / iCloud).`n`nIf you ARE using a cloud service (common with MEGA's custom folder location), this is likely a FALSE ALARM - click Yes.`n`nBackups in a truly local folder will NOT survive a PC format.`n`nUse this folder anyway?"
         if ([System.Windows.Forms.MessageBox]::Show($msg, "Not a cloud folder", [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Warning) -ne [System.Windows.Forms.DialogResult]::Yes) { return }
     }
 
@@ -1995,7 +2001,7 @@ function Update-HealthLamp {
 }
 $healthTimer = New-Object System.Windows.Forms.Timer
 $healthTimer.Interval = 30000
-$healthTimer.Add_Tick({ Update-HealthLamp })
+$healthTimer.Add_Tick({ Update-HealthLamp; Update-FolderList })
 Update-HealthLamp
 $healthTimer.Start()
 

@@ -1025,6 +1025,7 @@ function Show-SyncLog {
     $lf.Text = "Sync Log"
     $lf.Size = New-Object System.Drawing.Size(720,520)
     $lf.StartPosition = "CenterScreen"
+    $lf.TopMost = $true
     $tb = New-Object System.Windows.Forms.TextBox
     $tb.Multiline = $true
     $tb.ScrollBars = 'Vertical'

@@ -299,7 +299,7 @@ Add-Type -AssemblyName System.Drawing
 # Web-based logo/icon configuration
 $script:LogoUrl = "https://download.lrgex.com/Light%20Full%20logo.png"
 $script:IconUrl = "https://download.lrgex.com/bigx-dark-icon.ico"
-$script:AppVersion = '0.6.1'
+$script:AppVersion = '0.7.0'
 
 function Get-WebAsset {
     param(
@@ -1173,14 +1173,14 @@ function Show-SyncLog {
 .PARAMETER Enable
     $true to create/update the task; $false to remove it.
 .PARAMETER IntervalMinutes
-    Repeat interval in minutes. Default 5. This is the maximum sync lag.
+    Repeat interval in minutes. Default 120. This is the maximum sync lag.
 #>
 function Set-SyncTask {
     param([bool]$Enable, [int]$IntervalMinutes = 0)
     $taskName = "LRGEX-FolderSync"
     try {
         if ($Enable) {
-            # Interval: use the passed value, else read the configured SyncIntervalMinutes (default 5).
+            # Interval: use the passed value, else read the configured SyncIntervalMinutes (default 120).
             if ($IntervalMinutes -le 0) {
                 $cfg = Get-JunctionConfig
                 if ($cfg.PSObject.Properties.Name -contains 'SyncIntervalMinutes' -and $cfg.SyncIntervalMinutes -gt 0) { $IntervalMinutes = [int]$cfg.SyncIntervalMinutes }
@@ -1732,8 +1732,8 @@ $intervalItem.ForeColor = [System.Drawing.Color]::White
 $intervalItem.Add_Click({
     Add-Type -AssemblyName Microsoft.VisualBasic
     $cfg = Get-JunctionConfig
-    $cur = if ($cfg.PSObject.Properties.Name -contains 'SyncIntervalMinutes') { [int]$cfg.SyncIntervalMinutes } else { 5 }
-    $val = [Microsoft.VisualBasic.Interaction]::InputBox("Enter sync interval in MINUTES.`n(e.g. 5 = every 5 min,  120 = every 2 hours)", "Sync Interval", "$cur")
+    $cur = if ($cfg.PSObject.Properties.Name -contains 'SyncIntervalMinutes') { [int]$cfg.SyncIntervalMinutes } else { 120 }
+    $val = [Microsoft.VisualBasic.Interaction]::InputBox("Enter sync interval in MINUTES.`n(e.g. 120 = every 2 hours,  5 = every 5 min)", "Sync Interval", "$cur")
     if (-not $val) { return }
     $mins = 0
     if (-not ([int]::TryParse($val, [ref]$mins) -and $mins -ge 1)) {

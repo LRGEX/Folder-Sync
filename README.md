@@ -130,6 +130,6 @@ Stored in `junction-config.json`, **next to the script** (inside the home folder
 
 ---
 
-**Version:** 0.6.0 (Cloud-Agnostic Mirror Engine)
+**Version:** 0.7.0 (Cloud-Agnostic Mirror Engine)
 **Developer:** LRGEX
 **License:** Proprietary

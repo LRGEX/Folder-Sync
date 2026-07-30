@@ -1,5 +1,35 @@
 # Patch Notes — LRGEX Folder Sync
 
+## v0.7.0
+- **Default sync interval = 120 min (2 hours)** — was 5 min. Less churn, less resource use. Change anytime via Tools → Set Sync Interval.
+- **Decoupled right-click from the sync task** — enabling/disabling the right-click context menu now ONLY manages the File Explorer entry (registry). It no longer starts/stops the background sync task. They are completely independent.
+- **Self-healing sync task** — on every GUI launch, the app checks if the background task exists and points to a valid path. If stale (old home deleted) or missing, it unregisters + re-registers with the current home. Zero stale tasks, zero manual cleanup.
+- **Removed the broken cloud-detection warning** — hardcoded path matching couldn't detect MEGA/custom cloud locations. Removed entirely; the first-run dialog already recommends a cloud folder. No more false alarms.
+- **Fixed GUI hang** — TopMost on the main form caused MessageBoxes to appear behind it (frozen UI / blue circle). Removed TopMost from the main form.
+- **VBS launcher for truly invisible sync** — the background task now runs via wscript.exe (no console) instead of PowerShell.exe -WindowStyle Hidden (which flashed a window for ~1 second).
+- **Synced-folders list in the main UI** — each linked root folder shown with Auto-Restore status (ON/OFF). Toggle or Remove per folder. Selecting a folder fills the Source box. List auto-refreshes every 30s.
+- **Absence-driven auto-restore** — the sync cycle restores a folder only when its source is missing/empty (post-format). No more 'on login' trigger. The health lamp shows 'RESTORED N folder(s)' when a restore happens.
+- **Exclude feature** — Tools → Manage Exclusions: skip app-locked subfolders (e.g. Hermes's pending_messages) via robocopy /XD.
+- **Robocopy failure reasons in the log** — failures now show the human reason (e.g. 'Access is denied.') instead of just 'SYNC FAIL'.
+- **Toggle Auto-Restore fix** — used Add-Member for pairs missing the AutoRestore field (direct assignment failed silently → always ON).
+- **Harden AutoRestore parsing** — [bool]'false' is $true in PowerShell; replaced all casts with ConvertTo-Bool helper.
+- **Custom LRGEX icon** in the right-click context menu (auto-downloads on other PCs).
+- **Console-flash fix** — VBS launcher eliminates the 1-second window flash during background sync.
+- **Title clipping fix** — hero 24pt title label height 34→48 + MiddleLeft alignment.
+- **Version at bottom-center** of the window.
+- **Rebrand** — 'Junction Sync Tool' → 'Folder Sync' everywhere.
+
+## v0.6.1
+- **Synced-folders list** in the main UI with per-folder Auto-Restore toggle + Remove.
+- **Absence-driven auto-restore** — the sync cycle restores a folder only when its source is missing/empty. Removed the 'on login' trigger entirely.
+- **Toggle Auto-Restore fix** — pairs missing the AutoRestore field couldn't be toggled (direct assignment failed silently). Fixed via Add-Member.
+- **Harden AutoRestore parsing** — `[bool]"false"` is `$true` in PowerShell; added `ConvertTo-Bool` helper.
+- **Robocopy failure reasons in the log** — shows the human cause (e.g. 'Access is denied.') instead of just 'SYNC FAIL'.
+- **VBS launcher** — truly invisible background sync via `wscript.exe` (no console). Was `PowerShell.exe -WindowStyle Hidden` which flashed a window for ~1 second.
+- **GUI hang fix** — removed TopMost from the main form (MessageBoxes were hidden behind it → frozen UI).
+- **Hero title** (24pt bold) + version label at bottom-center.
+- **Custom LRGEX icon** in the right-click context menu (auto-downloads on other PCs).
+
 ## v0.6.0
 - **Exclude feature**: Tools → Manage Exclusions — list subfolder NAMES to skip during sync (e.g. `pending_messages`). robocopy runs with `/XD` for those names, so app-locked runtime folders no longer cause false failures. Resolves the `hermes\pending_messages` access-denied case (Hermes locks that folder; it's empty, so excluding it loses nothing and the lamp goes green).
 

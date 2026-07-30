@@ -26,6 +26,15 @@ try {
     Works on any PC / any user / any cloud (or none). Nothing is hardcoded.
 .OUTPUTS [string] the script's folder path.
 #>
+function ConvertTo-Bool {
+    # Safe bool parse. CRITICAL: [bool]"false" is $true in PowerShell, which would make
+    # auto-restore fire when the user thinks it's OFF. This treats "false" correctly.
+    param($Value)
+    if ($null -eq $Value) { return $false }
+    if ($Value -is [bool]) { return $Value }
+    if ($Value -is [string]) { return $Value.Trim() -match '^(?i:true|1|yes|on)$' }
+    return [bool]$Value
+}
 function Get-ScriptDir {
     $p = $null
     if ($PSCommandPath -and (Test-Path $PSCommandPath)) { $p = $PSCommandPath }
@@ -664,7 +673,7 @@ function Sync-AllPairs {
             # Absence-driven auto-restore: if the source is MISSING/empty (post-format) AND this
             # pair has auto-restore on AND a backup exists -> restore it. NOT a login trigger.
             $doAuto = $true
-            if ($j.PSObject.Properties.Name -contains 'AutoRestore') { $doAuto = [bool]$j.AutoRestore }
+            if ($j.PSObject.Properties.Name -contains 'AutoRestore') { $doAuto = (ConvertTo-Bool $j.AutoRestore) }
             $missing = (-not (Test-Path $src)) -or ((Get-ChildItem $src -Force -ErrorAction SilentlyContinue | Measure-Object).Count -eq 0)
             if ($missing -and $doAuto) {
                 if (Restore-PairFromCloud -SourcePath $src -TargetRelativePath $j.TargetRelativePath) {
@@ -1487,7 +1496,7 @@ if ($AutoRestore) {
         foreach ($j in $config.Junctions) {
             # Per-pair auto-restore opt-in (default true for legacy entries without the field).
             $doAuto = $true
-            if ($j.PSObject.Properties.Name -contains 'AutoRestore') { $doAuto = [bool]$j.AutoRestore }
+            if ($j.PSObject.Properties.Name -contains 'AutoRestore') { $doAuto = (ConvertTo-Bool $j.AutoRestore) }
             if (-not $doAuto) { continue }
             $src = $j.SourcePath
             $needsRestore = $false
@@ -1813,7 +1822,7 @@ function Update-FolderList {
     if ($cfg.Junctions) {
         foreach ($j in $cfg.Junctions) {
             $leaf = Split-Path $j.SourcePath -Leaf
-            $ar = if ($j.PSObject.Properties.Name -contains 'AutoRestore') { [bool]$j.AutoRestore } else { $true }
+            $ar = if ($j.PSObject.Properties.Name -contains 'AutoRestore') { (ConvertTo-Bool $j.AutoRestore) } else { $true }
             $row = New-Object System.Windows.Forms.ListViewItem($leaf)
             $row.SubItems.Add($(if ($ar) { 'ON' } else { 'OFF' })) | Out-Null
             $folderList.Items.Add($row) | Out-Null
@@ -1833,7 +1842,7 @@ $btnToggle.Add_Click({
     $cfg = Get-JunctionConfig
     $pairs = @($cfg.Junctions)
     if ($idx -ge $pairs.Count) { return }
-    $cur = if ($pairs[$idx].PSObject.Properties.Name -contains 'AutoRestore') { [bool]$pairs[$idx].AutoRestore } else { $true }
+    $cur = if ($pairs[$idx].PSObject.Properties.Name -contains 'AutoRestore') { (ConvertTo-Bool $pairs[$idx].AutoRestore) } else { $true }
     $newVal = -not $cur
     if ($pairs[$idx].PSObject.Properties.Name -contains 'AutoRestore') { $pairs[$idx].AutoRestore = $newVal }
     else { $pairs[$idx] | Add-Member -NotePropertyName 'AutoRestore' -NotePropertyValue $newVal -Force }

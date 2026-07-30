@@ -1796,6 +1796,14 @@ $folderList.MultiSelect = $false
 $folderList.Columns.Add('Folder', 350) | Out-Null
 $folderList.Columns.Add('Auto-Restore', 120) | Out-Null
 $form.Controls.Add($folderList)
+$folderList.Add_SelectedIndexChanged({
+    if ($folderList.SelectedItems.Count -gt 0) {
+        $idx = $folderList.SelectedItems[0].Index
+        $cfgF = Get-JunctionConfig
+        $pairsF = @($cfgF.Junctions)
+        if ($idx -lt $pairsF.Count) { $textSource.Text = $pairsF[$idx].SourcePath }
+    }
+})
 
 function Update-FolderList {
     $folderList.BeginUpdate()
@@ -1888,6 +1896,8 @@ $form.Controls.Add($btnRestore)
 $btnBrowseSource.Add_Click({
     $folderBrowser = New-Object System.Windows.Forms.FolderBrowserDialog
     $folderBrowser.Description = "Select folder to sync (Source folder)"
+    $cur = $textSource.Text.Trim('"').Trim("'").Trim()
+    if ($cur -and (Test-Path $cur -PathType Container)) { $folderBrowser.SelectedPath = $cur }
     if ($folderBrowser.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
         $textSource.Text = $folderBrowser.SelectedPath
     }
@@ -1911,10 +1921,28 @@ $btnCreate.Add_Click({
         return
     }
 
-    # Home = the script's own folder; synced files go into it (cloud-agnostic mirror engine).
-    $cloudDest = Get-PairCloudPath -SourcePath $sourcePath
-
     $leaf = Split-Path $sourcePath -Leaf
+
+    # Already linked? -> just re-sync it, no auto-restore re-prompt.
+    $cfg = Get-JunctionConfig
+    if (@($cfg.Junctions | Where-Object { $_.SourcePath -eq $sourcePath }).Count -gt 0) {
+        try {
+            if (Sync-PairToCloud -SourcePath $sourcePath) {
+                $statusLabel.ForeColor = [System.Drawing.Color]::Green
+                $statusLabel.Text = "[OK] '$leaf' is already linked - re-synced now."
+            } else {
+                $statusLabel.ForeColor = [System.Drawing.Color]::Red
+                $statusLabel.Text = "[ERROR] Re-sync failed for '$leaf' (background sync will retry)."
+            }
+        } catch {
+            $statusLabel.ForeColor = [System.Drawing.Color]::Red
+            $statusLabel.Text = "[ERROR] $_"
+        }
+        return
+    }
+
+    # New folder -> ask auto-restore, then link.
+    $cloudDest = Get-PairCloudPath -SourcePath $sourcePath
     $ar = ([System.Windows.Forms.MessageBox]::Show("Enable AUTO-RESTORE for '$leaf' after a PC format?`n`nYes = restored automatically after a format.`nNo = restore it manually.","Auto-restore for this folder?","YesNo","Question") -eq [System.Windows.Forms.DialogResult]::Yes)
     $arText = if ($ar) { "auto-restore ON" } else { "auto-restore OFF" }
     try {

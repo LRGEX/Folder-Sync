@@ -54,14 +54,14 @@ Game saves, app data, and repos almost always have distinct names, so in practic
 
 ## Installation & Usage
 
-1. **Get the script** — `onedrivesync.ps1` (this single file is the whole app).
+1. **Get the script** — `folder-sync.ps1` (this single file is the whole app).
 2. **Run it** — double-click / launch. On first run it asks you to pick the home folder (your cloud folder is suggested).
 3. **One-time setup** — *Tools → Right-Click Sync → Enable “Sync to OneDrive” on right-click*. (This also turns on the automatic background sync.)
 4. **Link folders** — right-click any folder → *“Sync to OneDrive (LRGEX)”*.
 5. **After a format** — open the app → *Restore Saved*.
 
 > First launch may show a Windows SmartScreen / execution-policy warning (the script is unsigned). Click **Run anyway**, or run:
-> `PowerShell.exe -ExecutionPolicy Bypass -File ".\onedrivesync.ps1"`
+> `PowerShell.exe -ExecutionPolicy Bypass -File ".\folder-sync.ps1"`
 
 ## Technical Features
 

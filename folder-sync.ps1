@@ -127,7 +127,7 @@ function Test-AndRelocateScript {
     }
     # Method 4: generic fallback search (current dir / Desktop)
     if ([string]::IsNullOrEmpty($currentPath) -or !(Test-Path $currentPath)) {
-        $scriptName = "onedrivesync.ps1"
+        $scriptName = "folder-sync.ps1"
         $searchPaths = @(
             (Join-Path $pwd $scriptName),
             (Join-Path ([Environment]::GetFolderPath("Desktop")) $scriptName)
@@ -168,7 +168,7 @@ function Test-AndRelocateScript {
         if ([System.Windows.Forms.MessageBox]::Show($msg, "Not a cloud folder", [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Warning) -ne [System.Windows.Forms.DialogResult]::Yes) { return }
     }
 
-    $targetPath = Join-Path $homeFolder "onedrivesync.ps1"
+    $targetPath = Join-Path $homeFolder "folder-sync.ps1"
     $configPath = Join-Path $homeFolder "junction-config.json"
     $markerPath = Join-Path $homeFolder ".lrgex-home"
 
@@ -238,7 +238,7 @@ if (-not $Link -and -not $Sync -and -not $AutoRestore -and (-NOT ([Security.Prin
             
             # Fallback search
             if ([string]::IsNullOrEmpty($scriptPath)) {
-                $scriptName = "onedrivesync.ps1"
+                $scriptName = "folder-sync.ps1"
                 $searchPaths = @(
                     (Join-Path $pwd $scriptName),
                     (Join-Path ([Environment]::GetFolderPath("Desktop")) $scriptName)
@@ -594,24 +594,32 @@ function Sync-AllPairs {
     $ok = 0; $fail = 0
     if ($config.Junctions) {
         foreach ($j in $config.Junctions) {
-            if (Sync-PairToCloud -SourcePath $j.SourcePath -TargetRelativePath $j.TargetRelativePath) { $ok++ } else { $fail++ }
+            if (Sync-PairToCloud -SourcePath $j.SourcePath -TargetRelativePath $j.TargetRelativePath) {
+                $ok++; Write-SyncLog "SYNC OK   : $($j.SourcePath)"
+            } else {
+                $fail++; Write-SyncLog "SYNC FAIL : $($j.SourcePath)"
+            }
         }
     }
+    Write-SyncLog "Sync cycle complete - $ok ok, $fail failed."
+    Write-SyncStatus -Ok $ok -Fail $fail
     return @{ Ok = $ok; Fail = $fail }
 }
 
 
 
 function Save-JunctionConfig {
-    param($sourcePath)
+    param($sourcePath, $autoRestore = $true)
     
     $configPath = Get-ConfigPath
     $config = Get-JunctionConfig
     
     # Add new junction to config (avoid duplicates). Destination is always the home folder
-    # (<home>\<leaf>) - there is no per-pair target, so none is stored.
+    # (<home>\<leaf>) - there is no per-pair target, so none is stored. AutoRestore is the
+    # per-pair opt-in for post-format auto-restore (asked at link time).
     $newJunction = @{
         SourcePath = $sourcePath
+        AutoRestore = [bool]$autoRestore
         Created = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
     }
     
@@ -860,14 +868,14 @@ function Set-AutoRestoreSettings {
         
         # Fallback: the home folder (script's own folder)
         if ([string]::IsNullOrEmpty($scriptPath)) {
-            $homeScript = Join-Path (Get-ScriptDir) "onedrivesync.ps1"
+            $homeScript = Join-Path (Get-ScriptDir) "folder-sync.ps1"
             if (Test-Path $homeScript) { $scriptPath = $homeScript }
         }
     }
       try {
         if ($Enable) {
             # Create scheduled task for startup with smart conditions
-            $action = New-ScheduledTaskAction -Execute "PowerShell.exe" -Argument "-WindowStyle Hidden -File `"$scriptPath`" -AutoRestore"
+            $action = New-ScheduledTaskAction -Execute "PowerShell.exe" -Argument ('-WindowStyle Hidden -NoProfile -ExecutionPolicy Bypass -File "' + $scriptPath + '" -AutoRestore')
             $trigger = New-ScheduledTaskTrigger -AtLogOn
             $principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interactive -RunLevel Highest
             
@@ -906,7 +914,7 @@ function Set-RightClickMenu {
             if ($PSCommandPath -and (Test-Path $PSCommandPath)) { $scriptPath = $PSCommandPath }
             elseif ($MyInvocation.MyCommand.Path -and (Test-Path $MyInvocation.MyCommand.Path)) { $scriptPath = $MyInvocation.MyCommand.Path }
             else {
-                $homeScript = Join-Path (Get-ScriptDir) "onedrivesync.ps1"
+                $homeScript = Join-Path (Get-ScriptDir) "folder-sync.ps1"
                 if (Test-Path $homeScript) { $scriptPath = $homeScript }
             }
             if (-not $scriptPath) { [System.Windows.Forms.MessageBox]::Show("Could not find the script path.","LRGEX Sync","OK","Warning") | Out-Null; return }
@@ -945,6 +953,7 @@ function Test-AutoRestoreSettings {
 .OUTPUTS hashtable @{ Status='GREEN'|'AMBER'|'RED'; Label=[string]; Reason=[string] }
 #>
 function Get-SyncHealth {
+    # 1) Is the task registered, running, and recent?
     try { $t = Get-ScheduledTask -TaskName 'LRGEX-FolderSync' -ErrorAction Stop }
     catch { return @{ Status='RED'; Label='SYNC OFF'; Reason='Task not registered - enable Right-Click Sync' } }
     $i = $t | Get-ScheduledTaskInfo -ErrorAction SilentlyContinue
@@ -954,7 +963,83 @@ function Get-SyncHealth {
     if ($code -eq 267011 -or -not $last -or $last.Year -lt 2000) { return @{ Status='RED'; Label='SYNC NEVER RAN'; Reason='Registered but never ran' } }
     if ($code -ne 0 -and $code -ne 267008) { return @{ Status='RED'; Label='SYNC ERROR'; Reason="Last run failed (code $code)" } }
     if ($last -lt (Get-Date).AddHours(-1)) { return @{ Status='RED'; Label='SYNC STALE'; Reason='Last run over 1h ago' } }
-    return @{ Status='GREEN'; Label='SYNC OK'; Reason="Last sync $($last.ToString('HH:mm'))" }
+    # 2) Did the last sync ACTUALLY copy everything? Read the REAL outcome (exit 0 alone is not enough).
+    $sp = Join-Path $env:LOCALAPPDATA 'LRGEX\sync-status.json'
+    if (Test-Path $sp) {
+        try {
+            $s = Get-Content $sp -Raw | ConvertFrom-Json
+            if ($s.Fail -gt 0) { return @{ Status='RED'; Label='SYNC HAD FAILURES'; Reason="$($s.Fail) folder(s) failed last sync - see View Sync Log" } }
+            return @{ Status='GREEN'; Label='SYNC OK'; Reason="Last sync $($s.LastSync) - $($s.Ok) folder(s) OK" }
+        } catch { }
+    }
+    return @{ Status='GREEN'; Label='SYNC OK'; Reason="Last run $($last.ToString('HH:mm'))" }
+}
+
+<#
+.SYNOPSIS
+    Appends a timestamped line to the sync log (inside the home folder). Capped at 2000 lines.
+.DESCRIPTION
+    Called by Sync-AllPairs / restore so the user has a readable history. To stop the log
+    growing unbounded (the task fires every ~5 min), it is trimmed to the last 2000 lines.
+#>
+function Get-SyncLogPath {
+    # Local (NOT in the synced home) so writing it every ~5 min doesn't churn OneDrive.
+    $dir = Join-Path $env:LOCALAPPDATA 'LRGEX'
+    if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
+    return (Join-Path $dir 'folder-sync.log')
+}
+function Write-SyncLog {
+    param([string]$Message)
+    try {
+        $logPath = Get-SyncLogPath
+        $line = "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] $Message"
+        Add-Content -Path $logPath -Value $line -Encoding UTF8 -ErrorAction SilentlyContinue
+        # Cap the log so it never grows unbounded.
+        if (Test-Path $logPath) {
+            $lines = Get-Content $logPath -ErrorAction SilentlyContinue
+            if ($lines -and $lines.Count -gt 2000) {
+                $lines | Select-Object -Last 2000 | Set-Content $logPath -Encoding UTF8 -ErrorAction SilentlyContinue
+            }
+        }
+    } catch { }
+}
+
+<#
+.SYNOPSIS
+    Opens a readable window showing the sync log (tail).
+#>
+function Write-SyncStatus {
+    param([int]$Ok, [int]$Fail)
+    try {
+        $dir = Join-Path $env:LOCALAPPDATA 'LRGEX'
+        if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
+        $path = Join-Path $dir 'sync-status.json'
+        @{ LastSync = (Get-Date).ToString('yyyy-MM-dd HH:mm:ss'); Ok = $Ok; Fail = $Fail } | ConvertTo-Json -Compress | Set-Content $path -Encoding UTF8
+    } catch { }
+}
+
+function Show-SyncLog {
+    Add-Type -AssemblyName System.Windows.Forms
+    $logPath = Get-SyncLogPath
+    $lf = New-Object System.Windows.Forms.Form
+    $lf.Text = "Sync Log"
+    $lf.Size = New-Object System.Drawing.Size(720,520)
+    $lf.StartPosition = "CenterScreen"
+    $tb = New-Object System.Windows.Forms.TextBox
+    $tb.Multiline = $true
+    $tb.ScrollBars = 'Vertical'
+    $tb.ReadOnly = $true
+    $tb.Font = New-Object System.Drawing.Font("Consolas",9)
+    $tb.Dock = 'Fill'
+    if (Test-Path $logPath) {
+        $tb.Text = ((Get-Content $logPath -Tail 500) -join "`r`n")
+        $tb.SelectionStart = $tb.Text.Length
+        $tb.ScrollToCaret()
+    } else {
+        $tb.Text = "No sync log yet. It is written on the first background sync (every ~5 min)."
+    }
+    $lf.Controls.Add($tb)
+    [void]$lf.ShowDialog()
 }
 
 <#
@@ -962,7 +1047,7 @@ function Get-SyncHealth {
     Enables/disables the continuous background sync task that mirrors all folder pairs to OneDrive.
 .DESCRIPTION
     Registers a Windows Scheduled Task "LRGEX-FolderSync" that fires at logon AND repeats every
-    IntervalMinutes. Each run executes onedrivesync.ps1 -Sync, which mirrors every registered
+    IntervalMinutes. Each run executes folder-sync.ps1 -Sync, which mirrors every registered
     folder pair into OneDrive (copy-only, never deletes). The repeat interval IS the sync lag
     window (max time between a local change and it reaching the cloud).
 .PARAMETER Enable
@@ -979,7 +1064,7 @@ function Set-SyncTask {
             if ($PSCommandPath -and (Test-Path $PSCommandPath)) { $scriptPath = $PSCommandPath }
             elseif ($MyInvocation.MyCommand.Path -and (Test-Path $MyInvocation.MyCommand.Path)) { $scriptPath = $MyInvocation.MyCommand.Path }
             else {
-                $homeScript = Join-Path (Get-ScriptDir) "onedrivesync.ps1"
+                $homeScript = Join-Path (Get-ScriptDir) "folder-sync.ps1"
                 if (Test-Path $homeScript) { $scriptPath = $homeScript }
             }
             if (-not $scriptPath) { return }
@@ -1044,7 +1129,7 @@ function Remove-JunctionDialog {
     $warningLabel = New-Object System.Windows.Forms.Label
     $warningLabel.Location = New-Object System.Drawing.Point(10,305)
     $warningLabel.Size = New-Object System.Drawing.Size(570,40)
-    $warningLabel.Text = "⚠️ WARNING: This will permanently delete the junction links. The original source folders will remain safe, but you'll need to recreate junctions if you want them back."
+    $warningLabel.Text = "âš ï¸ WARNING: This will permanently delete the junction links. The original source folders will remain safe, but you'll need to recreate junctions if you want them back."
     $warningLabel.ForeColor = [System.Drawing.Color]::DarkRed
     $warningLabel.Font = New-Object System.Drawing.Font("Microsoft Sans Serif", 9, [System.Drawing.FontStyle]::Bold)
     $removeForm.Controls.Add($warningLabel)
@@ -1276,6 +1361,10 @@ if ($AutoRestore) {
     if ($config.Junctions.Count -gt 0) {
         $restored = 0
         foreach ($j in $config.Junctions) {
+            # Per-pair auto-restore opt-in (default true for legacy entries without the field).
+            $doAuto = $true
+            if ($j.PSObject.Properties.Name -contains 'AutoRestore') { $doAuto = [bool]$j.AutoRestore }
+            if (-not $doAuto) { continue }
             $src = $j.SourcePath
             $needsRestore = $false
             if (-not (Test-Path $src)) {
@@ -1316,13 +1405,15 @@ if ($Link) {
             [System.Windows.Forms.MessageBox]::Show("Not a valid folder:`n$folder","LRGEX Sync","OK","Warning") | Out-Null
             exit
         }
-        Save-JunctionConfig -sourcePath $folder
-        $ok = Sync-PairToCloud -SourcePath $folder
         $leaf = Split-Path $folder -Leaf
+        $ar = ([System.Windows.Forms.MessageBox]::Show("Enable AUTO-RESTORE for '$leaf' after a PC format?`n`nYes = this folder is put back automatically after a format.`nNo = restore it manually.","Auto-restore for this folder?","YesNo","Question") -eq [System.Windows.Forms.DialogResult]::Yes)
+        Save-JunctionConfig -sourcePath $folder -autoRestore $ar
+        $ok = Sync-PairToCloud -SourcePath $folder
+        $arText = if ($ar) { "auto-restore ON" } else { "auto-restore OFF" }
         if ($ok) {
-            [System.Windows.Forms.MessageBox]::Show("Linked and mirrored into your sync home:`n$leaf`nNew files will sync automatically.","LRGEX Sync","OK","Information") | Out-Null
+            [System.Windows.Forms.MessageBox]::Show("Linked and mirrored into your sync home:`n$leaf ($arText)`nNew files will sync automatically.","LRGEX Sync","OK","Information") | Out-Null
         } else {
-            [System.Windows.Forms.MessageBox]::Show("Registered, but the first mirror had issues (background sync will retry).`n$leaf","LRGEX Sync","OK","Warning") | Out-Null
+            [System.Windows.Forms.MessageBox]::Show("Registered, but the first mirror had issues (background sync will retry).`n$leaf ($arText)","LRGEX Sync","OK","Warning") | Out-Null
         }
     } catch {
         [System.Windows.Forms.MessageBox]::Show("Failed: $_","LRGEX Sync","OK","Error") | Out-Null
@@ -1516,6 +1607,12 @@ Update-RightClickMenuLabel   # initial label from current state
 # Keep the label fresh whenever the Tools menu is opened.
 $toolsMenu.Add_DropDownOpening({ Update-RightClickMenuLabel })
 
+$logItem = New-Object System.Windows.Forms.ToolStripMenuItem
+$logItem.Text = "View Sync Log"
+$logItem.BackColor = [System.Drawing.Color]::FromArgb(45, 45, 45)
+$logItem.ForeColor = [System.Drawing.Color]::White
+$logItem.Add_Click({ Show-SyncLog })
+
 $toolsMenu.DropDownItems.Add($healthCheckItem)
 $toolsMenu.DropDownItems.Add($removeItem)
 $toolsMenu.DropDownItems.Add("-")
@@ -1525,6 +1622,8 @@ $toolsMenu.DropDownItems.Add("-")
 $toolsMenu.DropDownItems.Add($schedulingMenu)
 $toolsMenu.DropDownItems.Add("-")
 $toolsMenu.DropDownItems.Add($rcMenu)
+$toolsMenu.DropDownItems.Add("-")
+$toolsMenu.DropDownItems.Add($logItem)
 
 $menuStrip.Items.Add($toolsMenu)
 $form.Controls.Add($menuStrip)
@@ -1638,12 +1737,15 @@ $btnCreate.Add_Click({
     # Home = the script's own folder; synced files go into it (cloud-agnostic mirror engine).
     $cloudDest = Get-PairCloudPath -SourcePath $sourcePath
 
+    $leaf = Split-Path $sourcePath -Leaf
+    $ar = ([System.Windows.Forms.MessageBox]::Show("Enable AUTO-RESTORE for '$leaf' after a PC format?`n`nYes = restored automatically after a format.`nNo = restore it manually.","Auto-restore for this folder?","YesNo","Question") -eq [System.Windows.Forms.DialogResult]::Yes)
+    $arText = if ($ar) { "auto-restore ON" } else { "auto-restore OFF" }
     try {
-        Save-JunctionConfig -sourcePath $sourcePath
+        Save-JunctionConfig -sourcePath $sourcePath -autoRestore $ar
         if (Sync-PairToCloud -SourcePath $sourcePath) {
             Set-SyncTask -Enable $true
             $statusLabel.ForeColor = [System.Drawing.Color]::Green
-            $statusLabel.Text = "[OK] Folder linked and mirrored into your sync home:`n$cloudDest  <=  $sourcePath`nNew files will sync automatically every few minutes."
+            $statusLabel.Text = "[OK] Folder linked and mirrored into your sync home:`n$cloudDest  <=  $sourcePath`n$arText. New files sync automatically every few minutes."
         } else {
             $statusLabel.ForeColor = [System.Drawing.Color]::Red
             $statusLabel.Text = "[ERROR] Folder registered but the first mirror failed:`n$sourcePath`nThe background sync will retry automatically."

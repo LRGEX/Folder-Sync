@@ -5,7 +5,7 @@
 *
 
 # Allow only the main script
-!onedrivesync.ps1
+!folder-sync.ps1
 
 # Allow documentation
 !README.md

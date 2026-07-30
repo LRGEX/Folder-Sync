@@ -1,4 +1,4 @@
-# LRGEX Junction Sync Tool
+# LRGEX Folder Sync
 # Backs up folders to your chosen sync home so they survive a PC format
 # Features: Create junctions, save configurations, restore after PC format
 
@@ -291,7 +291,7 @@ Add-Type -AssemblyName System.Drawing
 # Web-based logo/icon configuration
 $script:LogoUrl = "https://download.lrgex.com/Light%20Full%20logo.png"
 $script:IconUrl = "https://download.lrgex.com/bigx-dark-icon.ico"
-$script:AppVersion = '0.5.8'
+$script:AppVersion = '0.5.9'
 
 function Get-WebAsset {
     param(
@@ -320,7 +320,7 @@ function Get-WebAsset {
         # Download if needed
         if ($shouldDownload) {
             $webClient = New-Object System.Net.WebClient
-            $webClient.Headers.Add("User-Agent", "LRGEX Junction Sync Tool")
+            $webClient.Headers.Add("User-Agent", "LRGEX Folder Sync")
             $webClient.DownloadFile($Url, $localPath)
             $webClient.Dispose()
         }
@@ -396,19 +396,34 @@ function Add-LogoPanel {
             $logoLabel = New-Object System.Windows.Forms.Label
             $logoLabel.Location = New-Object System.Drawing.Point(140, 15)
             $logoLabel.Size = New-Object System.Drawing.Size(340, 30)
-            $logoLabel.Text = "Junction Sync Tool    v" + $script:AppVersion
+            $logoLabel.Text = "Folder Sync"
             $logoLabel.Font = New-Object System.Drawing.Font("Segoe UI", 12, [System.Drawing.FontStyle]::Bold)
             $logoLabel.ForeColor = [System.Drawing.Color]::FromArgb(45, 45, 45)
             $logoPanel.Controls.Add($logoLabel)
+            $verLabel = New-Object System.Windows.Forms.Label
+            $verLabel.Location = New-Object System.Drawing.Point(140, 40)
+            $verLabel.Size = New-Object System.Drawing.Size(200, 16)
+            $verLabel.Text = 'v' + $script:AppVersion
+            $verLabel.Font = New-Object System.Drawing.Font("Segoe UI", 8)
+            $verLabel.ForeColor = [System.Drawing.Color]::FromArgb(120, 120, 120)
+            $logoPanel.Controls.Add($verLabel)
         } else {            # Fallback text-only logo if web download fails
             $logoLabel = New-Object System.Windows.Forms.Label
             $logoLabel.Location = New-Object System.Drawing.Point(10, 10)
             $logoLabel.Size = New-Object System.Drawing.Size(470, 40)
-            $logoLabel.Text = "LRGEX Junction Sync Tool    v" + $script:AppVersion
+            $logoLabel.Text = "LRGEX Folder Sync"
             $logoLabel.Font = New-Object System.Drawing.Font("Segoe UI", 14, [System.Drawing.FontStyle]::Bold)
             $logoLabel.ForeColor = [System.Drawing.Color]::FromArgb(45, 45, 45)
             $logoLabel.TextAlign = 'MiddleCenter'
-            $logoPanel.Controls.Add($logoLabel)}
+            $logoPanel.Controls.Add($logoLabel)
+            $verLabel = New-Object System.Windows.Forms.Label
+            $verLabel.Location = New-Object System.Drawing.Point(10, 44)
+            $verLabel.Size = New-Object System.Drawing.Size(470, 14)
+            $verLabel.Text = 'v' + $script:AppVersion
+            $verLabel.Font = New-Object System.Drawing.Font("Segoe UI", 8)
+            $verLabel.ForeColor = [System.Drawing.Color]::FromArgb(120, 120, 120)
+            $verLabel.TextAlign = 'MiddleCenter'
+            $logoPanel.Controls.Add($verLabel)}
         
     } catch {
         # If logo panel creation fails, continue without it
@@ -566,24 +581,20 @@ function Sync-PairToCloud {
         robocopy.exe "$SourcePath" "$cloud" /E /XJ /NFL /NDL /NJH /NJS /NP /R:5 /W:5 /LOG:"$tmpLog" | Out-Null
         $code = $LASTEXITCODE
         if ($code -lt 8) { return $true }
-        # Failure: pull the ERROR line + the human cause that follows it (e.g. "Access is denied.").
-        $reason = 'no detail captured'
+        # Failure: capture the human reason (e.g. "Access is denied.") for a clean log line.
+        $reason = "robocopy exit $code"
         try {
-            $found = Get-Content $tmpLog -ErrorAction SilentlyContinue | Select-String -Pattern 'ERROR' -Context 0,4
             $reasonPat = 'Access is denied|being used by another process|cannot find the|not enough space|syntax is incorrect|The process cannot access|already exists|is not a valid|file name is too long'
+            $found = Get-Content $tmpLog -ErrorAction SilentlyContinue | Select-String -Pattern 'ERROR' -Context 0,4
             if ($found) {
-                $seen = @{}
-                $bits = foreach ($m in $found) {
-                    $main = ($m.Line -replace '^\d+/\d+/\d+ \d+:\d+:\d+ ', '').Trim()
-                    if ($seen.ContainsKey($main)) { continue }   # collapse /R retries of the same error
-                    $seen[$main] = $true
+                foreach ($m in $found) {
                     $why = $m.Context.PostContext | Where-Object { $_ -and $_ -match $reasonPat } | Select-Object -First 1
-                    if ($why) { "$main -> $($why.Trim())" } else { $main }
+                    if ($why) { $reason = $why.Trim(); break }
                 }
-                $reason = ($bits | Select-Object -First 3) -join '  |  '
             }
         } catch { }
-        Write-SyncLog "SYNC FAIL : $SourcePath (robocopy exit $code) -> $reason"
+        $leaf = Split-Path $SourcePath -Leaf
+        Write-SyncLog ("  [FAIL] " + $leaf + "  -  " + $reason)
         return $false
     } catch { return $false }
     finally { Remove-Item $tmpLog -Force -ErrorAction SilentlyContinue }
@@ -637,17 +648,20 @@ function Restore-PairFromCloud {
 function Sync-AllPairs {
     $config = Get-JunctionConfig
     $ok = 0; $fail = 0
+    Write-SyncLog ('------------------------------------------------------------')
+    Write-SyncLog ("Sync cycle  -  " + (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'))
     if ($config.Junctions) {
         foreach ($j in $config.Junctions) {
             if (Sync-PairToCloud -SourcePath $j.SourcePath -TargetRelativePath $j.TargetRelativePath) {
-                $ok++; Write-SyncLog "SYNC OK   : $($j.SourcePath)"
+                $ok++
+                Write-SyncLog ("  [ OK ] " + (Split-Path $j.SourcePath -Leaf))
             } else {
                 $fail++
-                # detailed failure reason is already logged by Sync-PairToCloud
+                # detailed reason is already logged by Sync-PairToCloud
             }
         }
     }
-    Write-SyncLog "Sync cycle complete - $ok ok, $fail failed."
+    Write-SyncLog ("Done: $ok ok, $fail failed.")
     Write-SyncStatus -Ok $ok -Fail $fail
     return @{ Ok = $ok; Fail = $fail }
 }
@@ -1476,7 +1490,7 @@ if ($Link) {
 
 # Create Form
 $form = New-Object System.Windows.Forms.Form
-$form.Text = "LRGEX Junction Sync Tool"
+$form.Text = "LRGEX Folder Sync"
 $form.Size = New-Object System.Drawing.Size(520,545)
 $form.StartPosition = "CenterScreen"
 $form.TopMost = $true

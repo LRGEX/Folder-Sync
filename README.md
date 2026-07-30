@@ -17,19 +17,27 @@ It is **fully cloud-agnostic**: you choose where backups live. A cloud folder is
 ## Key Features
 
 - **Pick any destination** — OneDrive, Google Drive, Mega, Dropbox, iCloud, or a local folder. Cloud is recommended, never required.
-- **Right-click to sync** — right-click any folder → *“Sync to OneDrive (LRGEX)”* → done. No admin prompt.
-- **Continuous sync** — a background task mirrors new/changed files every few minutes automatically.
+- **Right-click to sync** — right-click any folder → *“Sync folder (LRGEX)”* → done. No admin prompt.
+- **Continuous sync** — a background task mirrors new/changed files automatically (default every 5 min; configurable — e.g. every 2 hours).
 - **Copy-only / never deletes** — your data is never removed from either side.
 - **One-click restore** — after a format, *Restore Saved* puts every folder back at its **original path**.
 - **Works anywhere** — run the script from any PC / any path / any partition; it asks you once where to set up.
 - **Dark-themed Windows Forms GUI** with LRGEX branding.
 - **Self-backing-up** — the script and its config live inside the folder you chose, so if that folder is in a cloud, they survive a format too.
 
+### Visibility & control (v0.5.x)
+- **Health lamp** — a live green / amber / red status bar showing sync health at a glance (red = a real failure, with the reason).
+- **Sync log** — *Tools → View Sync Log*: readable history of what synced and why anything failed.
+- **Per-link auto-restore** — when you link a folder, choose whether it auto-restores after a format.
+- **Configurable interval** — *Tools → Set Sync Interval…* (e.g. `120` = every 2 hours).
+
+See [PATCH_NOTES.md](PATCH_NOTES.md) for the full changelog.
+
 ## How It Works
 
 1. **First run** — open the script. It asks **once**: *"Pick the folder where LRGEX sync will live."* Choose a folder (your cloud folder is suggested). If you pick a non-cloud folder, it warns you (won't survive a format) but lets you continue.
 2. **Enable right-click once** — *Tools → Right-Click Sync → Enable*. (This also turns on the automatic background sync.)
-3. **Link any folder** — right-click it → *“Sync to OneDrive (LRGEX)”*. Real files are copied into your home folder; a confirmation appears.
+3. **Link any folder** — right-click it → *“Sync folder (LRGEX)”*. Real files are copied into your home folder; a confirmation appears.
 4. **Keep playing / working** — new files you create are mirrored automatically (~every 5 min).
 5. **After a format** — open the app → *Restore Saved* → every folder returns to its original path.
 
@@ -57,7 +65,7 @@ Game saves, app data, and repos almost always have distinct names, so in practic
 1. **Get the script** — `folder-sync.ps1` (this single file is the whole app).
 2. **Run it** — double-click / launch. On first run it asks you to pick the home folder (your cloud folder is suggested).
 3. **One-time setup** — *Tools → Right-Click Sync → Enable “Sync to OneDrive” on right-click*. (This also turns on the automatic background sync.)
-4. **Link folders** — right-click any folder → *“Sync to OneDrive (LRGEX)”*.
+4. **Link folders** — right-click any folder → *“Sync folder (LRGEX)”*.
 5. **After a format** — open the app → *Restore Saved*.
 
 > First launch may show a Windows SmartScreen / execution-policy warning (the script is unsigned). Click **Run anyway**, or run:
@@ -71,7 +79,7 @@ Game saves, app data, and repos almost always have distinct names, so in practic
 - Restore = copy back from the home folder to the **original path** (home copy stays intact). The original path is remembered in the config, so restore always puts files back exactly where they were.
 
 ### Right-Click Integration
-- File Explorer context-menu entry *“Sync to OneDrive (LRGEX)”*.
+- File Explorer context-menu entry *“Sync folder (LRGEX)”*.
 - Registry command passes only the folder (`%V`); the destination is the script's own folder (home) — no hardcoded paths, so it works for any user.
 
 ### Cloud-Agnostic Destination
@@ -122,6 +130,6 @@ Stored in `junction-config.json`, **next to the script** (inside the home folder
 
 ---
 
-**Version:** 5.0 (Cloud-Agnostic Mirror Engine)
+**Version:** 0.5.9 (Cloud-Agnostic Mirror Engine)
 **Developer:** LRGEX
 **License:** Proprietary

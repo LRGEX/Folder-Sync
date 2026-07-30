@@ -175,13 +175,6 @@ function Test-AndRelocateScript {
     if ($fb.ShowDialog() -ne [System.Windows.Forms.DialogResult]::OK) { return }
 
     $homeFolder = $fb.SelectedPath
-    # Non-blocking warning if the picked folder isn't under a known cloud root.
-    $underCloud = $false
-    if ($cloudRoot -and $homeFolder.StartsWith($cloudRoot, [System.StringComparison]::OrdinalIgnoreCase)) { $underCloud = $true }
-    if (-not $underCloud) {
-        $msg = "This folder doesn't match a KNOWN cloud path (OneDrive / Google Drive / Mega / Dropbox / iCloud).`n`nIf you ARE using a cloud service (common with MEGA's custom folder location), this is likely a FALSE ALARM - click Yes.`n`nBackups in a truly local folder will NOT survive a PC format.`n`nUse this folder anyway?"
-        if ([System.Windows.Forms.MessageBox]::Show($msg, "Not a cloud folder", [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Warning) -ne [System.Windows.Forms.DialogResult]::Yes) { return }
-    }
 
     $targetPath = Join-Path $homeFolder "folder-sync.ps1"
     $configPath = Join-Path $homeFolder "junction-config.json"

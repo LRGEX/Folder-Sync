@@ -1006,7 +1006,7 @@ function Set-RightClickMenu {
             New-Item -Path $cmdKey -Force | Out-Null
             $cmd = 'PowerShell.exe -WindowStyle Hidden -ExecutionPolicy Bypass -File "' + $scriptPath + '" -Link "%V"'
             Set-ItemProperty -Path $cmdKey -Name '(Default)' -Value $cmd
-            [System.Windows.Forms.MessageBox]::Show("Right-click 'Sync folder' enabled!`nRight-click any folder to sync it. Background sync is also on.","LRGEX Sync","OK","Information") | Out-Null
+            [System.Windows.Forms.MessageBox]::Show("Right-click 'Sync folder' enabled!`nRight-click any folder to sync it.","LRGEX Sync","OK","Information") | Out-Null
         } else {
             Remove-Item -Path $regKey -Recurse -Force -ErrorAction SilentlyContinue
             [System.Windows.Forms.MessageBox]::Show("Right-click sync removed.","LRGEX Sync","OK","Information") | Out-Null
@@ -1035,7 +1035,7 @@ function Test-AutoRestoreSettings {
 function Get-SyncHealth {
     # 1) Is the task registered, running, and recent?
     try { $t = Get-ScheduledTask -TaskName 'LRGEX-FolderSync' -ErrorAction Stop }
-    catch { return @{ Status='RED'; Label='SYNC OFF'; Reason='Task not registered - enable Right-Click Sync' } }
+    catch { return @{ Status='RED'; Label='SYNC OFF'; Reason='Task not registered - it will be recreated next time the app opens' } }
     $i = $t | Get-ScheduledTaskInfo -ErrorAction SilentlyContinue
     $code = [int]$i.LastTaskResult
     $last = $i.LastRunTime
@@ -1184,7 +1184,7 @@ function Set-SyncTask {
             if ($IntervalMinutes -le 0) {
                 $cfg = Get-JunctionConfig
                 if ($cfg.PSObject.Properties.Name -contains 'SyncIntervalMinutes' -and $cfg.SyncIntervalMinutes -gt 0) { $IntervalMinutes = [int]$cfg.SyncIntervalMinutes }
-                else { $IntervalMinutes = 5 }
+                else { $IntervalMinutes = 120 }
             }
             $scriptPath = $null
             if ($PSCommandPath -and (Test-Path $PSCommandPath)) { $scriptPath = $PSCommandPath }

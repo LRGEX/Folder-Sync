@@ -952,7 +952,6 @@ function Set-SyncTask {
     $taskName = "LRGEX-FolderSync"
     try {
         if ($Enable) {
-            # Resolve the relocated script path (same approach as the auto-restore task)
             $scriptPath = $null
             if ($PSCommandPath -and (Test-Path $PSCommandPath)) { $scriptPath = $PSCommandPath }
             elseif ($MyInvocation.MyCommand.Path -and (Test-Path $MyInvocation.MyCommand.Path)) { $scriptPath = $MyInvocation.MyCommand.Path }
@@ -962,13 +961,22 @@ function Set-SyncTask {
             }
             if (-not $scriptPath) { return }
 
-            $action = New-ScheduledTaskAction -Execute "PowerShell.exe" -Argument "-WindowStyle Hidden -ExecutionPolicy Bypass -File `$"$scriptPath`$" -Sync"
-            # At-logon trigger that REPEATS every IntervalMinutes indefinitely (no Duration = repeat forever)
-            $trigger = New-ScheduledTaskTrigger -AtLogon
-            $trigger.Repetition = (New-CimInstance -ClassName MSFT_TaskRepetitionPattern -Namespace "Root/Microsoft/Windows/TaskScheduler" -Property @{ Interval = "PT$($IntervalMinutes)M"; StopAtDurationEnd = $false } -ClientOnly)
-            $principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interactive -RunLevel Highest
+            # Argument built by concatenation (the old backtick-escaped quotes corrupted the
+            # stored action -> "-File $" -> error 267 "directory invalid").
+            $arg = '-WindowStyle Hidden -NoProfile -ExecutionPolicy Bypass -File "' + $scriptPath + '" -Sync'
+            $action = New-ScheduledTaskAction -Execute "PowerShell.exe" -Argument $arg
+            # TWO triggers (you cannot reliably attach a repetition to -AtLogon directly):
+            #  1) AtLogon         -> fires on every login (incl. after a format)
+            #  2) Once-now+repeat -> the continuous ticker (every IntervalMinutes, indefinitely)
+            $tLogon = New-ScheduledTaskTrigger -AtLogon
+            $tRepeat = New-ScheduledTaskTrigger -Once -At (Get-Date) -RepetitionInterval (New-TimeSpan -Minutes $IntervalMinutes) -RepetitionDuration (New-TimeSpan -Days 3650)
+            # No -RunLevel Highest: sync only robocopies the user's OWN files (no admin needed),
+            # so the task registers without elevation.
+            $principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interactive
             $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Minutes 10) -MultipleInstances IgnoreNew
-            Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Force | Out-Null
+            Register-ScheduledTask -TaskName $taskName -Action $action -Trigger @($tLogon, $tRepeat) -Principal $principal -Settings $settings -Force | Out-Null
+            # Kick it off NOW so it never sits idle waiting for the next logon.
+            Start-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
         } else {
             Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue
         }

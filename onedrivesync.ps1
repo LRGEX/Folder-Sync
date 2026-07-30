@@ -370,7 +370,7 @@ function Add-LogoPanel {
     
     try {
         # Increase form size to accommodate logo
-        $Form.Size = New-Object System.Drawing.Size(520, 480)
+        $Form.Size = New-Object System.Drawing.Size(520, 525)
         
         # Create logo panel
         $logoPanel = New-Object System.Windows.Forms.Panel
@@ -936,6 +936,29 @@ function Test-AutoRestoreSettings {
 
 <#
 .SYNOPSIS
+    Returns the health of the continuous sync task for the UI lamp.
+.DESCRIPTION
+    GREEN  = task registered, last run succeeded (0) and within the last hour.
+    AMBER  = a sync is currently running (State=Running or result 267009). NEVER red while running.
+    RED    = task missing / never ran / last run failed (real error code) / stale (>1h).
+    This is what stops the user from being blind to a broken sync.
+.OUTPUTS hashtable @{ Status='GREEN'|'AMBER'|'RED'; Label=[string]; Reason=[string] }
+#>
+function Get-SyncHealth {
+    try { $t = Get-ScheduledTask -TaskName 'LRGEX-FolderSync' -ErrorAction Stop }
+    catch { return @{ Status='RED'; Label='SYNC OFF'; Reason='Task not registered - enable Right-Click Sync' } }
+    $i = $t | Get-ScheduledTaskInfo -ErrorAction SilentlyContinue
+    $code = [int]$i.LastTaskResult
+    $last = $i.LastRunTime
+    if (($t.State -eq 'Running') -or ($code -eq 267009)) { return @{ Status='AMBER'; Label='SYNCING'; Reason='Running now' } }
+    if ($code -eq 267011 -or -not $last -or $last.Year -lt 2000) { return @{ Status='RED'; Label='SYNC NEVER RAN'; Reason='Registered but never ran' } }
+    if ($code -ne 0 -and $code -ne 267008) { return @{ Status='RED'; Label='SYNC ERROR'; Reason="Last run failed (code $code)" } }
+    if ($last -lt (Get-Date).AddHours(-1)) { return @{ Status='RED'; Label='SYNC STALE'; Reason='Last run over 1h ago' } }
+    return @{ Status='GREEN'; Label='SYNC OK'; Reason="Last sync $($last.ToString('HH:mm'))" }
+}
+
+<#
+.SYNOPSIS
     Enables/disables the continuous background sync task that mirrors all folder pairs to OneDrive.
 .DESCRIPTION
     Registers a Windows Scheduled Task "LRGEX-FolderSync" that fires at logon AND repeats every
@@ -1310,7 +1333,7 @@ if ($Link) {
 # Create Form
 $form = New-Object System.Windows.Forms.Form
 $form.Text = "LRGEX Junction Sync Tool"
-$form.Size = New-Object System.Drawing.Size(520,480)
+$form.Size = New-Object System.Drawing.Size(520,525)
 $form.StartPosition = "CenterScreen"
 $form.TopMost = $true
 $form.FormBorderStyle = 'FixedDialog'
@@ -1635,6 +1658,29 @@ $btnCreate.Add_Click({
 $btnRestore.Add_Click({
     Show-RestoreDialog
 })
+
+# --- Health lamp: live status of the continuous sync task (so you're never blind) ---
+$healthLamp = New-Object System.Windows.Forms.Label
+$healthLamp.Location = New-Object System.Drawing.Point(10,445)
+$healthLamp.Size = New-Object System.Drawing.Size(490,26)
+$healthLamp.Font = New-Object System.Drawing.Font("Segoe UI",10,[System.Drawing.FontStyle]::Bold)
+$healthLamp.TextAlign = 'MiddleLeft'
+$healthLamp.BorderStyle = 'Fixed3D'
+$form.Controls.Add($healthLamp)
+function Update-HealthLamp {
+    $h = Get-SyncHealth
+    $healthLamp.Text = " $($h.Label)  -  $($h.Reason)"
+    switch ($h.Status) {
+        'GREEN' { $healthLamp.ForeColor = [System.Drawing.Color]::FromArgb(0,160,0) }
+        'AMBER' { $healthLamp.ForeColor = [System.Drawing.Color]::FromArgb(200,140,0) }
+        default { $healthLamp.ForeColor = [System.Drawing.Color]::FromArgb(200,30,30) }
+    }
+}
+$healthTimer = New-Object System.Windows.Forms.Timer
+$healthTimer.Interval = 30000
+$healthTimer.Add_Tick({ Update-HealthLamp })
+Update-HealthLamp
+$healthTimer.Start()
 
 # Show the form
 $form.Add_Shown({$form.Activate()})

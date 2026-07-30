@@ -409,13 +409,7 @@ function Add-LogoPanel {
             $logoLabel.Font = New-Object System.Drawing.Font("Segoe UI", 24, [System.Drawing.FontStyle]::Bold)
             $logoLabel.ForeColor = [System.Drawing.Color]::FromArgb(45, 45, 45)
             $logoPanel.Controls.Add($logoLabel)
-            $verLabel = New-Object System.Windows.Forms.Label
-            $verLabel.Location = New-Object System.Drawing.Point(140, 42)
-            $verLabel.Size = New-Object System.Drawing.Size(200, 16)
-            $verLabel.Text = 'v' + $script:AppVersion
-            $verLabel.Font = New-Object System.Drawing.Font("Segoe UI", 9)
-            $verLabel.ForeColor = [System.Drawing.Color]::FromArgb(120, 120, 120)
-            $logoPanel.Controls.Add($verLabel)
+            # (version moved to bottom-center of the window)
         } else {            # Fallback text-only logo if web download fails
             $logoLabel = New-Object System.Windows.Forms.Label
             $logoLabel.Location = New-Object System.Drawing.Point(10, 6)
@@ -1563,7 +1557,7 @@ $form = New-Object System.Windows.Forms.Form
 $form.Text = "LRGEX Folder Sync"
 $form.Size = New-Object System.Drawing.Size(520,545)
 $form.StartPosition = "CenterScreen"
-$form.TopMost = $true
+$form.TopMost = $false
 $form.FormBorderStyle = 'FixedDialog'
 $form.MaximizeBox = $false
 $form.WindowState = 'Normal'
@@ -2003,6 +1997,16 @@ $healthTimer.Interval = 30000
 $healthTimer.Add_Tick({ Update-HealthLamp })
 Update-HealthLamp
 $healthTimer.Start()
+
+# Version label (bottom-center of the window)
+$versionLabel = New-Object System.Windows.Forms.Label
+$versionLabel.Text = 'v' + $script:AppVersion
+$versionLabel.Location = New-Object System.Drawing.Point(205, 465)
+$versionLabel.Size = New-Object System.Drawing.Size(100, 16)
+$versionLabel.Font = New-Object System.Drawing.Font('Segoe UI', 8)
+$versionLabel.ForeColor = [System.Drawing.Color]::Gray
+$versionLabel.TextAlign = 'MiddleCenter'
+$form.Controls.Add($versionLabel)
 
 # Show the form
 $form.Add_Shown({ Update-FolderList; $form.Activate() })

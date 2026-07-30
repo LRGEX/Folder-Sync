@@ -996,7 +996,14 @@ function Set-RightClickMenu {
             Set-SyncTask -Enable $true
             New-Item -Path $regKey -Force | Out-Null
             Set-ItemProperty -Path $regKey -Name '(Default)' -Value 'Sync folder (LRGEX)'
-            Set-ItemProperty -Path $regKey -Name 'Icon' -Value 'shell32.dll,165'
+            # Use the custom LRGEX icon if available (home folder or web cache), else shell32 fallback.
+            $iconFile = Join-Path (Get-ScriptDir) 'app-icon.ico'
+            if (-not (Test-Path $iconFile)) { $iconFile = (Get-WebAsset -Url $script:IconUrl -LocalFileName 'app-icon.ico') }
+            if ($iconFile -and (Test-Path $iconFile)) {
+                Set-ItemProperty -Path $regKey -Name 'Icon' -Value $iconFile
+            } else {
+                Set-ItemProperty -Path $regKey -Name 'Icon' -Value 'shell32.dll,165'
+            }
             $cmdKey = "$regKey\command"
             New-Item -Path $cmdKey -Force | Out-Null
             $cmd = 'PowerShell.exe -WindowStyle Hidden -ExecutionPolicy Bypass -File "' + $scriptPath + '" -Link "%V"'

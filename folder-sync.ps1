@@ -1825,7 +1825,9 @@ $btnToggle.Add_Click({
     $pairs = @($cfg.Junctions)
     if ($idx -ge $pairs.Count) { return }
     $cur = if ($pairs[$idx].PSObject.Properties.Name -contains 'AutoRestore') { [bool]$pairs[$idx].AutoRestore } else { $true }
-    $pairs[$idx].AutoRestore = -not $cur
+    $newVal = -not $cur
+    if ($pairs[$idx].PSObject.Properties.Name -contains 'AutoRestore') { $pairs[$idx].AutoRestore = $newVal }
+    else { $pairs[$idx] | Add-Member -NotePropertyName 'AutoRestore' -NotePropertyValue $newVal -Force }
     $cfg.Junctions = $pairs
     $cfg | ConvertTo-Json -Depth 5 | Set-Content (Get-ConfigPath) -Encoding UTF8
     Update-FolderList

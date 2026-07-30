@@ -1102,10 +1102,16 @@ function Show-SyncLog {
     Repeat interval in minutes. Default 5. This is the maximum sync lag.
 #>
 function Set-SyncTask {
-    param([bool]$Enable, [int]$IntervalMinutes = 5)
+    param([bool]$Enable, [int]$IntervalMinutes = 0)
     $taskName = "LRGEX-FolderSync"
     try {
         if ($Enable) {
+            # Interval: use the passed value, else read the configured SyncIntervalMinutes (default 5).
+            if ($IntervalMinutes -le 0) {
+                $cfg = Get-JunctionConfig
+                if ($cfg.PSObject.Properties.Name -contains 'SyncIntervalMinutes' -and $cfg.SyncIntervalMinutes -gt 0) { $IntervalMinutes = [int]$cfg.SyncIntervalMinutes }
+                else { $IntervalMinutes = 5 }
+            }
             $scriptPath = $null
             if ($PSCommandPath -and (Test-Path $PSCommandPath)) { $scriptPath = $PSCommandPath }
             elseif ($MyInvocation.MyCommand.Path -and (Test-Path $MyInvocation.MyCommand.Path)) { $scriptPath = $MyInvocation.MyCommand.Path }
@@ -1127,7 +1133,7 @@ function Set-SyncTask {
             # No -RunLevel Highest: sync only robocopies the user's OWN files (no admin needed),
             # so the task registers without elevation.
             $principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interactive
-            $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Minutes 10) -MultipleInstances IgnoreNew
+            $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Minutes 60) -MultipleInstances IgnoreNew
             Register-ScheduledTask -TaskName $taskName -Action $action -Trigger @($tLogon, $tRepeat) -Principal $principal -Settings $settings -Force | Out-Null
             # Kick it off NOW so it never sits idle waiting for the next logon.
             Start-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
@@ -1659,6 +1665,28 @@ $logItem.BackColor = [System.Drawing.Color]::FromArgb(45, 45, 45)
 $logItem.ForeColor = [System.Drawing.Color]::White
 $logItem.Add_Click({ Show-SyncLog })
 
+$intervalItem = New-Object System.Windows.Forms.ToolStripMenuItem
+$intervalItem.Text = "Set Sync Interval..."
+$intervalItem.BackColor = [System.Drawing.Color]::FromArgb(45, 45, 45)
+$intervalItem.ForeColor = [System.Drawing.Color]::White
+$intervalItem.Add_Click({
+    Add-Type -AssemblyName Microsoft.VisualBasic
+    $cfg = Get-JunctionConfig
+    $cur = if ($cfg.PSObject.Properties.Name -contains 'SyncIntervalMinutes') { [int]$cfg.SyncIntervalMinutes } else { 5 }
+    $val = [Microsoft.VisualBasic.Interaction]::InputBox("Enter sync interval in MINUTES.`n(e.g. 5 = every 5 min,  120 = every 2 hours)", "Sync Interval", "$cur")
+    if (-not $val) { return }
+    $mins = 0
+    if (-not ([int]::TryParse($val, [ref]$mins) -and $mins -ge 1)) {
+        [System.Windows.Forms.MessageBox]::Show("Enter a whole number of minutes (1 or more).","Invalid","OK","Warning") | Out-Null; return
+    }
+    if ($cfg.PSObject.Properties.Name -contains 'SyncIntervalMinutes') { $cfg.SyncIntervalMinutes = $mins }
+    else { $cfg | Add-Member -NotePropertyName SyncIntervalMinutes -NotePropertyValue $mins -Force }
+    $configPath = Get-ConfigPath
+    $cfg | ConvertTo-Json -Depth 5 | Set-Content $configPath -Encoding UTF8
+    Set-SyncTask -Enable $true -IntervalMinutes $mins
+    [System.Windows.Forms.MessageBox]::Show("Sync interval set to $mins minute(s). Background task updated.","Sync Interval","OK","Information") | Out-Null
+})
+
 $toolsMenu.DropDownItems.Add($healthCheckItem)
 $toolsMenu.DropDownItems.Add($removeItem)
 $toolsMenu.DropDownItems.Add("-")
@@ -1670,6 +1698,7 @@ $toolsMenu.DropDownItems.Add("-")
 $toolsMenu.DropDownItems.Add($rcMenu)
 $toolsMenu.DropDownItems.Add("-")
 $toolsMenu.DropDownItems.Add($logItem)
+$toolsMenu.DropDownItems.Add($intervalItem)
 
 $menuStrip.Items.Add($toolsMenu)
 $form.Controls.Add($menuStrip)

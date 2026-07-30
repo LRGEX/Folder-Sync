@@ -556,13 +556,36 @@ function Get-PairCloudPath {
 function Sync-PairToCloud {
     param([string]$SourcePath, [string]$TargetRelativePath)
     if ([string]::IsNullOrWhiteSpace($SourcePath) -or -not (Test-Path $SourcePath)) { return $false }
+    $tmpLog = [System.IO.Path]::GetTempFileName()
     try {
         $cloud = Get-PairCloudPath -SourcePath $SourcePath -TargetRelativePath $TargetRelativePath
         $parent = Split-Path $cloud -Parent
         if (-not (Test-Path $parent)) { New-Item -ItemType Directory -Path $parent -Force | Out-Null }
-        robocopy.exe "$SourcePath" "$cloud" /E /XJ /NFL /NDL /NJH /NJS /NP /R:5 /W:5 | Out-Null
-        return ($LASTEXITCODE -lt 8)
+        # Capture robocopy output to a temp log so failures can be EXPLAINED in the sync log.
+        robocopy.exe "$SourcePath" "$cloud" /E /XJ /NFL /NDL /NJH /NJS /NP /R:5 /W:5 /LOG:"$tmpLog" | Out-Null
+        $code = $LASTEXITCODE
+        if ($code -lt 8) { return $true }
+        # Failure: pull the ERROR line + the human cause that follows it (e.g. "Access is denied.").
+        $reason = 'no detail captured'
+        try {
+            $found = Get-Content $tmpLog -ErrorAction SilentlyContinue | Select-String -Pattern 'ERROR' -Context 0,4
+            $reasonPat = 'Access is denied|being used by another process|cannot find the|not enough space|syntax is incorrect|The process cannot access|already exists|is not a valid|file name is too long'
+            if ($found) {
+                $seen = @{}
+                $bits = foreach ($m in $found) {
+                    $main = ($m.Line -replace '^\d+/\d+/\d+ \d+:\d+:\d+ ', '').Trim()
+                    if ($seen.ContainsKey($main)) { continue }   # collapse /R retries of the same error
+                    $seen[$main] = $true
+                    $why = $m.Context.PostContext | Where-Object { $_ -and $_ -match $reasonPat } | Select-Object -First 1
+                    if ($why) { "$main -> $($why.Trim())" } else { $main }
+                }
+                $reason = ($bits | Select-Object -First 3) -join '  |  '
+            }
+        } catch { }
+        Write-SyncLog "SYNC FAIL : $SourcePath (robocopy exit $code) -> $reason"
+        return $false
     } catch { return $false }
+    finally { Remove-Item $tmpLog -Force -ErrorAction SilentlyContinue }
 }
 
 <#
@@ -575,13 +598,34 @@ function Sync-PairToCloud {
 #>
 function Restore-PairFromCloud {
     param([string]$SourcePath, [string]$TargetRelativePath)
+    $tmpLog = [System.IO.Path]::GetTempFileName()
     try {
         $cloud = Get-PairCloudPath -SourcePath $SourcePath -TargetRelativePath $TargetRelativePath
         if (-not (Test-Path $cloud)) { return $false }
         if (-not (Test-Path $SourcePath)) { New-Item -ItemType Directory -Path $SourcePath -Force | Out-Null }
-        robocopy.exe "$cloud" "$SourcePath" /E /XJ /NFL /NDL /NJH /NJS /NP /R:5 /W:5 | Out-Null
-        return ($LASTEXITCODE -lt 8)
+        robocopy.exe "$cloud" "$SourcePath" /E /XJ /NFL /NDL /NJH /NJS /NP /R:5 /W:5 /LOG:"$tmpLog" | Out-Null
+        $code = $LASTEXITCODE
+        if ($code -lt 8) { return $true }
+        $reason = 'no detail captured'
+        try {
+            $found = Get-Content $tmpLog -ErrorAction SilentlyContinue | Select-String -Pattern 'ERROR' -Context 0,4
+            $reasonPat = 'Access is denied|being used by another process|cannot find the|not enough space|syntax is incorrect|The process cannot access|already exists|is not a valid|file name is too long'
+            if ($found) {
+                $seen = @{}
+                $bits = foreach ($m in $found) {
+                    $main = ($m.Line -replace '^\d+/\d+/\d+ \d+:\d+:\d+ ', '').Trim()
+                    if ($seen.ContainsKey($main)) { continue }
+                    $seen[$main] = $true
+                    $why = $m.Context.PostContext | Where-Object { $_ -and $_ -match $reasonPat } | Select-Object -First 1
+                    if ($why) { "$main -> $($why.Trim())" } else { $main }
+                }
+                $reason = ($bits | Select-Object -First 3) -join '  |  '
+            }
+        } catch { }
+        Write-SyncLog "RESTORE FAIL : $SourcePath (robocopy exit $code) -> $reason"
+        return $false
     } catch { return $false }
+    finally { Remove-Item $tmpLog -Force -ErrorAction SilentlyContinue }
 }
 
 <#
@@ -597,7 +641,8 @@ function Sync-AllPairs {
             if (Sync-PairToCloud -SourcePath $j.SourcePath -TargetRelativePath $j.TargetRelativePath) {
                 $ok++; Write-SyncLog "SYNC OK   : $($j.SourcePath)"
             } else {
-                $fail++; Write-SyncLog "SYNC FAIL : $($j.SourcePath)"
+                $fail++
+                # detailed failure reason is already logged by Sync-PairToCloud
             }
         }
     }
@@ -1774,9 +1819,9 @@ function Update-HealthLamp {
     $h = Get-SyncHealth
     $healthLamp.Text = " $($h.Label)  -  $($h.Reason)"
     switch ($h.Status) {
-        'GREEN' { $healthLamp.ForeColor = [System.Drawing.Color]::FromArgb(0,160,0) }
-        'AMBER' { $healthLamp.ForeColor = [System.Drawing.Color]::FromArgb(200,140,0) }
-        default { $healthLamp.ForeColor = [System.Drawing.Color]::FromArgb(200,30,30) }
+        'GREEN' { $healthLamp.BackColor = [System.Drawing.Color]::FromArgb(0,160,0);   $healthLamp.ForeColor = [System.Drawing.Color]::White }
+        'AMBER' { $healthLamp.BackColor = [System.Drawing.Color]::FromArgb(200,140,0); $healthLamp.ForeColor = [System.Drawing.Color]::White }
+        default { $healthLamp.BackColor = [System.Drawing.Color]::FromArgb(200,30,30);  $healthLamp.ForeColor = [System.Drawing.Color]::White }
     }
 }
 $healthTimer = New-Object System.Windows.Forms.Timer
@@ -1784,6 +1829,16 @@ $healthTimer.Interval = 30000
 $healthTimer.Add_Tick({ Update-HealthLamp })
 Update-HealthLamp
 $healthTimer.Start()
+
+# Version label (bottom-right)
+$versionLabel = New-Object System.Windows.Forms.Label
+$versionLabel.Text = 'v0.5.8'
+$versionLabel.Location = New-Object System.Drawing.Point(430,478)
+$versionLabel.Size = New-Object System.Drawing.Size(70,16)
+$versionLabel.Font = New-Object System.Drawing.Font('Segoe UI',8)
+$versionLabel.ForeColor = [System.Drawing.Color]::Gray
+$versionLabel.TextAlign = 'MiddleRight'
+$form.Controls.Add($versionLabel)
 
 # Show the form
 $form.Add_Shown({$form.Activate()})

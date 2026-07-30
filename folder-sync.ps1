@@ -1061,10 +1061,10 @@ function Get-SyncHealth {
     Appends a timestamped line to the sync log (inside the home folder). Capped at 2000 lines.
 .DESCRIPTION
     Called by Sync-AllPairs / restore so the user has a readable history. To stop the log
-    growing unbounded (the task fires every ~5 min), it is trimmed to the last 2000 lines.
+    growing unbounded (the task fires every ~120 min), it is trimmed to the last 2000 lines.
 #>
 function Get-SyncLogPath {
-    # Local (NOT in the synced home) so writing it every ~5 min doesn't churn OneDrive.
+    # Local (NOT in the synced home) so writing it every ~120 min doesn't churn OneDrive.
     $dir = Join-Path $env:LOCALAPPDATA 'LRGEX'
     if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
     return (Join-Path $dir 'folder-sync.log')
@@ -1156,7 +1156,7 @@ function Show-SyncLog {
         $tb.SelectionStart = $tb.Text.Length
         $tb.ScrollToCaret()
     } else {
-        $tb.Text = "No sync log yet. It is written on the first background sync (every ~5 min)."
+        $tb.Text = "No sync log yet. It is written on the first background sync (every ~120 min)."
     }
     $lf.Controls.Add($tb)
     [void]$lf.ShowDialog()

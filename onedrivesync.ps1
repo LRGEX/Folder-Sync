@@ -603,15 +603,15 @@ function Sync-AllPairs {
 
 
 function Save-JunctionConfig {
-    param($sourcePath, $targetRelPath)
+    param($sourcePath)
     
     $configPath = Get-ConfigPath
     $config = Get-JunctionConfig
     
-    # Add new junction to config (avoid duplicates)
+    # Add new junction to config (avoid duplicates). Destination is always the home folder
+    # (<home>\<leaf>) - there is no per-pair target, so none is stored.
     $newJunction = @{
         SourcePath = $sourcePath
-        TargetRelativePath = $targetRelPath
         Created = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
     }
     

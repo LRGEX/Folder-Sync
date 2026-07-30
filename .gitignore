@@ -9,7 +9,7 @@
 
 # Allow documentation
 !README.md
-!PATCH_NOTES.md
+!patchnotes.md
 
 # Allow this gitignore file
 !.gitignore

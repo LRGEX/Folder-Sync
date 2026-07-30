@@ -31,7 +31,7 @@ It is **fully cloud-agnostic**: you choose where backups live. A cloud folder is
 - **Per-link auto-restore** — when you link a folder, choose whether it auto-restores after a format.
 - **Configurable interval** — *Tools → Set Sync Interval…* (e.g. `120` = every 2 hours).
 
-See [PATCH_NOTES.md](PATCH_NOTES.md) for the full changelog.
+See [patchnotes.md](patchnotes.md) for the full changelog.
 
 ## How It Works
 

@@ -992,7 +992,6 @@ function Set-RightClickMenu {
                 if (Test-Path $homeScript) { $scriptPath = $homeScript }
             }
             if (-not $scriptPath) { [System.Windows.Forms.MessageBox]::Show("Could not find the script path.","LRGEX Sync","OK","Warning") | Out-Null; return }
-            Set-SyncTask -Enable $true
             New-Item -Path $regKey -Force | Out-Null
             Set-ItemProperty -Path $regKey -Name '(Default)' -Value 'Sync folder (LRGEX)'
             # Use the custom LRGEX icon if available (home folder or web cache), else shell32 fallback.
@@ -2009,5 +2008,18 @@ $versionLabel.TextAlign = 'MiddleCenter'
 $form.Controls.Add($versionLabel)
 
 # Show the form
-$form.Add_Shown({ Update-FolderList; $form.Activate() })
+$form.Add_Shown({
+    Update-FolderList
+    # Self-heal: ensure the background sync task exists + points to a valid path.
+    # Decoupled from the right-click menu (right-click = ONLY the File Explorer entry).
+    try {
+        $task = Get-ScheduledTask -TaskName 'LRGEX-FolderSync' -ErrorAction Stop
+        $stale = $true
+        if ($task.Actions.Count -gt 0 -and $task.Actions[0].Arguments -match '"([^"]+\.(?:vbs|ps1))"') {
+            $stale = -not (Test-Path $matches[1])
+        }
+        if ($stale) { Unregister-ScheduledTask -TaskName 'LRGEX-FolderSync' -Confirm:$false -ErrorAction SilentlyContinue; Set-SyncTask -Enable $true }
+    } catch { Set-SyncTask -Enable $true }
+    $form.Activate()
+})
 [void]$form.ShowDialog()

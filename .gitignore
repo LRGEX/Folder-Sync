@@ -8,6 +8,9 @@
 
 # Private files (NOT for public repo)
 AGENT.md
+deploy.bat
+deploy.ps1
+latest.json
 junction-config.json
 sync.log
 sync-status.json

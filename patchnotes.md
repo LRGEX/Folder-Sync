@@ -1,5 +1,11 @@
 # Patch Notes — LRGEX Folder Sync
 
+## v1.2.9
+- Backup Folder compression runs on background thread (UI stays alive, live progress)
+- Set Sync Interval no longer hangs (schtasks on background thread)
+- Cloudflare cache-buster on download URL (?v=version)
+- Exe renamed to LRGEXSync.exe
+
 ## v1.2.7
 - Cache-buster fix: download URL appends ?v=version (bypasses Cloudflare cache)
 

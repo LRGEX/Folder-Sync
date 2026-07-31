@@ -28,7 +28,7 @@ slint::slint! {
 
     export component App inherits Window {
         title: "LRGEX Folder Sync " + root.app-version;
-        icon: @image-url("../app-icon.png");
+        icon: @image-url("../assets/app-icon.png");
         preferred-width: 560px;
         preferred-height: 700px;
         background: #1e1e1e;
@@ -88,7 +88,7 @@ slint::slint! {
             // Logo (centered, smaller)
             HorizontalLayout {
                 alignment: center;
-                Image { source: @image-url("../logo.png"); width: 240px; height: 50px; image-fit: contain; }
+                Image { source: @image-url("../assets/logo.png"); width: 240px; height: 50px; image-fit: contain; }
             }
             HorizontalLayout {
                 alignment: center;

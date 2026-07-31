@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="logo.png" alt="LRGEX Logo" width="240">
+  <img src="assets/logo.png" alt="LRGEX Logo" width="240">
 
   # Folder Sync
 

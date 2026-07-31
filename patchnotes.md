@@ -1,5 +1,17 @@
 # Patch Notes — LRGEX Folder Sync
 
+## v1.0.8
+- **Auto-update fix**: update.rs rewritten with download validation (size check), proper error dialogs at every step, no more silent failures.
+- **Non-NTFS fallback**: hardlinks now fall back to full copies on non-NTFS drives (FAT32, exFAT, network).
+- **Assets folder**: icons moved to assets/ for cleaner project structure.
+- **Git history purged**: deploy scripts removed from all past commits.
+- **.gitattributes**: silenced CRLF/LF warnings.
+
+## v1.0.7
+- **Non-NTFS support**: hardlink fallback to copy for FAT32/exFAT/network drives.
+- **README cleanup**: stripped to essentials, added Features section.
+- **deploy.ps1 read-only**: reads version from Cargo.toml (no auto-bump).
+
 ## v1.0.6
 - **Auto-update system**: app checks for updates on launch, downloads and swaps the exe via self-replace, relaunches automatically.
 - **Deploy pipeline**: deploy.ps1 + deploy.bat for one-click build + upload to server + GitHub Releases.

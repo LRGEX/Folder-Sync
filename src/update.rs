@@ -20,15 +20,13 @@ struct Platform {
     url: String,
 }
 
-/// Check for updates. Called on app launch (delayed).
-/// Silently skips on network error — never blocks the user.
 pub fn check_for_updates() {
     let current = env!("CARGO_PKG_VERSION");
+    let exe_path = std::env::current_exe().unwrap_or_default();
 
-    // Fetch manifest
     let response = match ureq::get(MANIFEST_URL).timeout(std::time::Duration::from_secs(10)).call() {
         Ok(r) => r,
-        Err(_) => return, // network error — silently skip
+        Err(_) => return,
     };
 
     let manifest: Manifest = match response.into_json() {
@@ -36,12 +34,10 @@ pub fn check_for_updates() {
         Err(_) => return,
     };
 
-    // Compare versions
     if !is_newer(&manifest.version, current) {
-        return; // up to date
+        return;
     }
 
-    // Show update dialog
     let confirm = rfd::MessageDialog::new()
         .set_title("Update Available")
         .set_description(&format!(
@@ -55,41 +51,44 @@ pub fn check_for_updates() {
         return;
     }
 
-    // Download new exe to temp
+    // Download
     let temp_exe = std::env::temp_dir().join("folder_sync_update.exe");
 
     let resp = match ureq::get(&manifest.platforms.windows.url).call() {
         Ok(r) => r,
-        Err(e) => {
-            show_error(&format!("Download failed: {}", e));
-            return;
-        }
+        Err(e) => { show_error(&format!("Download failed: {}", e)); return; }
     };
 
     let mut reader = resp.into_reader();
     let mut data = Vec::new();
-    if reader.read_to_end(&mut data).is_err() {
-        show_error("Failed to read download data.");
+    match reader.read_to_end(&mut data) {
+        Ok(_) => {}
+        Err(e) => { show_error(&format!("Read failed: {}", e)); return; }
+    }
+
+    // Check if download looks valid (at least 1MB for a real exe)
+    if data.len() < 1_000_000 {
+        show_error(&format!("Downloaded file too small: {} bytes. Not a valid exe.", data.len()));
         return;
     }
 
-    if std::fs::write(&temp_exe, &data).is_err() {
-        show_error("Failed to save update file.");
-        return;
+    match std::fs::write(&temp_exe, &data) {
+        Ok(_) => {}
+        Err(e) => { show_error(&format!("Save failed: {}", e)); return; }
     }
 
-    // Swap the running exe
+    // Swap
     match self_replace::self_replace(&temp_exe) {
         Ok(_) => {
-            // Cleanup temp file (best effort)
             let _ = std::fs::remove_file(&temp_exe);
-            // Relaunch the new exe before exiting
-            let exe = std::env::current_exe().unwrap_or_default();
-            let _ = std::process::Command::new(&exe).spawn();
+            let _ = std::process::Command::new(&exe_path).spawn();
             std::process::exit(0);
         }
         Err(e) => {
-            show_error(&format!("Failed to replace executable: {}", e));
+            show_error(&format!(
+                "Replace failed: {}\n\nExe: {}\nTemp: {}",
+                e, exe_path.display(), temp_exe.display()
+            ));
         }
     }
 }
@@ -102,7 +101,6 @@ fn show_error(msg: &str) {
         .show();
 }
 
-/// Compare semantic versions: returns true if remote > current
 fn is_newer(remote: &str, current: &str) -> bool {
     let parse = |s: &str| -> Vec<u32> {
         s.split('.').filter_map(|n| n.parse().ok()).collect()

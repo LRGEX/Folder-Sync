@@ -3,7 +3,7 @@
 
   # Folder Sync
 
-  **Version 1.0.7**
+  **Version 1.0.8**
 
   **Your files survive a PC format. Automatically.**
 

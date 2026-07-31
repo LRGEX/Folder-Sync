@@ -66,9 +66,8 @@ pub fn check_for_updates() {
         Err(e) => { show_error(&format!("Read failed: {}", e)); return; }
     }
 
-    // Check if download looks valid (at least 1MB for a real exe)
     if data.len() < 1_000_000 {
-        show_error(&format!("Downloaded file too small: {} bytes. Not a valid exe.", data.len()));
+        show_error(&format!("Downloaded file too small: {} bytes.", data.len()));
         return;
     }
 
@@ -77,20 +76,32 @@ pub fn check_for_updates() {
         Err(e) => { show_error(&format!("Save failed: {}", e)); return; }
     }
 
-    // Swap
-    match self_replace::self_replace(&temp_exe) {
-        Ok(_) => {
-            let _ = std::fs::remove_file(&temp_exe);
-            let _ = std::process::Command::new(&exe_path).spawn();
-            std::process::exit(0);
-        }
-        Err(e) => {
-            show_error(&format!(
-                "Replace failed: {}\n\nExe: {}\nTemp: {}",
-                e, exe_path.display(), temp_exe.display()
-            ));
-        }
-    }
+    // Write updater batch — copies new exe AFTER app exits (OneDrive-safe)
+    let bat_path = std::env::temp_dir().join("lrgex-updater.bat");
+    let bat = format!(
+        "@echo off\r\nping 127.0.0.1 -n 3 > nul\r\n:retry\r\ncopy /Y \"{}\" \"{}\" >nul 2>&1\r\nif errorlevel 1 (\r\n  ping 127.0.0.1 -n 3 > nul\r\n  goto retry\r\n)\r\ndel \"{}\" >nul 2>&1\r\nstart \"\" \"{}\"\r\ndel \"%~f0\"\r\n",
+        temp_exe.to_string_lossy(),
+        exe_path.to_string_lossy(),
+        temp_exe.to_string_lossy(),
+        exe_path.to_string_lossy()
+    );
+    let _ = std::fs::write(&bat_path, bat);
+
+    // Show confirmation
+    rfd::MessageDialog::new()
+        .set_title("Updating")
+        .set_description("The app will restart in a moment with the new version.")
+        .set_buttons(rfd::MessageButtons::Ok)
+        .show();
+
+    // Launch updater batch detached, then exit
+    use std::os::windows::process::CommandExt;
+    let _ = std::process::Command::new("cmd.exe")
+        .args(["/c", bat_path.to_str().unwrap_or("")])
+        .creation_flags(0x08000000u32)
+        .spawn();
+
+    std::process::exit(0);
 }
 
 fn show_error(msg: &str) {

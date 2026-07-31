@@ -1,5 +1,23 @@
 # Patch Notes — LRGEX Folder Sync
 
+## v1.2.5
+- Exe renamed to LRGEXSync.exe everywhere (Cargo [[bin]] name)
+- Batch updater retry loop for OneDrive locks
+- deploy.ps1 verifies upload size matches local
+- Legacy PS task cleanup on startup
+- AGENT.md updated (no VBS, no self_replace references)
+
+## v1.2.4
+- Replaced self_replace with batch updater (OneDrive-safe: app exits before copy)
+- Copy retry loop in updater batch (handles OneDrive lock)
+- Old PS task cleanup on startup
+- Click folder in list fills source box
+
+## v1.2.3
+- Click folder in list fills source box (can re-sync by clicking Backup Folder)
+- Equal-width buttons (min-width + stretch)
+- Canonical home registry verified
+
 ## v1.2.2
 - **Root cause fix**: scheduled task uses canonical home path from registry, not current_exe()
 - **No VBS runner**: task runs exe directly (windows_subsystem=windows, zero console flash)

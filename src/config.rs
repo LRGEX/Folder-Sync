@@ -98,6 +98,42 @@ pub fn clear_canonical_home() {
     }
 }
 
+/// Clean up old PowerShell version artifacts if they exist.
+/// Safe to call on every launch — silently skips if nothing found.
+pub fn cleanup_legacy_ps() {
+    use std::os::windows::process::CommandExt;
+    use std::process::Command;
+
+    // 1. Delete old PS scheduled task (LRGEX-FolderSync without -Rust)
+    let old_task = Command::new("schtasks.exe")
+        .args(["/Query", "/TN", "LRGEX-FolderSync"])
+        .creation_flags(0x08000000u32)
+        .output();
+    if let Ok(out) = &old_task {
+        if out.status.success() {
+            // Old task exists — delete it
+            let _ = Command::new("schtasks.exe")
+                .args(["/Delete", "/TN", "LRGEX-FolderSync", "/F"])
+                .creation_flags(0x08000000u32)
+                .output();
+        }
+    }
+
+    // 2. Delete old VBS runner if it exists
+    let local_app = std::env::var("LOCALAPPDATA").unwrap_or_default();
+    let vbs_path = std::path::PathBuf::from(&local_app)
+        .join("LRGEX").join("sync-runner.vbs");
+    if vbs_path.exists() {
+        let _ = std::fs::remove_file(&vbs_path);
+    }
+
+    // 3. Delete old VBS in home folder (PS version stored it there too)
+    let home_vbs = script_dir().join("sync-runner.vbs");
+    if home_vbs.exists() {
+        let _ = std::fs::remove_file(&home_vbs);
+    }
+}
+
 pub fn pair_cloud_path(source: &str) -> PathBuf {
     let leaf = std::path::Path::new(source)
         .file_name()

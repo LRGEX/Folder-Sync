@@ -1,7 +1,11 @@
 [package]
 name = "folder_sync"
-version = "1.2.2"
+version = "1.2.5"
 edition = "2021"
+
+[[bin]]
+name = "LRGEXSync"
+path = "src/main.rs"
 
 [dependencies]
 slint = "1.10"
@@ -11,7 +15,6 @@ winreg = "0.55"
 chrono = "0.4"
 rfd = "0.15"
 ureq = { version = "2", features = ["json"] }
-self-replace = "1"
 tar = "0.4"
 zstd = "0.13"
 

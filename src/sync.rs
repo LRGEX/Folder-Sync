@@ -377,7 +377,7 @@ pub fn register_sync_task(interval_minutes: i32) -> bool {
         Some(h) => h,
         None => return false, // not registered yet — can't register task
     };
-    let exe = home.join("folder_sync.exe");
+    let exe = home.join("LRGEXSync.exe");
     let task_cmd = format!("\"{}\" -sync", exe.to_string_lossy());
 
     match Command::new("schtasks.exe")

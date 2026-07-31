@@ -138,7 +138,7 @@ slint::slint! {
                             height: parent.height;
                             background: i == root.selected-index ? #cb803c : transparent;
                         }
-                        TouchArea { clicked => { root.selected-index = i; } }
+                        TouchArea { clicked => { root.selected-index = i; root.source-text = entry.path; } }
                         HorizontalLayout {
                             Text {
                                 text: entry.path;
@@ -357,6 +357,7 @@ pub fn run() {
     }
 
     // Self-heal: register task using canonical home (never current_exe)
+    config::cleanup_legacy_ps();
     let cfg0 = config::load_config();
     sync::register_sync_task(cfg0.sync_interval_minutes);
     config::ensure_versions_setup();
@@ -910,7 +911,7 @@ RECOMMENDED: a folder inside a cloud service (OneDrive, Google Drive, etc.) so y
         if let Ok(exe) = std::env::current_exe() {
             let exe_name = exe.file_name()
                 .map(|n| n.to_string_lossy().to_string())
-                .unwrap_or_else(|| "folder_sync.exe".into());
+                .unwrap_or_else(|| "LRGEXSync.exe".into());
             let dest = home.join(&exe_name);
             let _ = std::fs::copy(&exe, &dest);
             let _ = std::fs::write(home.join(".lrgex-home"), "LRGEX Folder Sync Home");

@@ -3,7 +3,7 @@
 
   # Folder Sync
 
-  **Version 1.2.2**
+  **Version 1.2.5**
 
   **Your files survive a PC format. Automatically.**
 
@@ -62,7 +62,7 @@ You set it once. You forget it exists. When you need it, your files are there.
 
 ## Installation
 
-1. Download `folder_sync.exe`
+1. Download `LRGEXSync.exe`
 2. Run it — pick a **home folder** inside your cloud service (OneDrive, Google Drive, etc.) so your files survive a format. Local folder works too, but won't survive a format.
 3. Open the app from the home folder
 4. Go to **Tools → Right-Click Sync** to enable the right-click menu
@@ -75,7 +75,7 @@ Your folders are now backed up continuously.
 ## Restore after a format
 
 1. Reinstall your cloud service and let it download
-2. Open `folder_sync.exe` from your home folder
+2. Open `LRGEXSync.exe` from your home folder
 3. Click **"Restore Saved"** — or let auto-restore handle it automatically
 
 Every folder goes back to its exact original path.

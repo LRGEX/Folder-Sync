@@ -3,6 +3,8 @@
 
   # Folder Sync
 
+  **Version 1.0.6**
+
   **Your files survive a PC format. Automatically.**
 
 </div>

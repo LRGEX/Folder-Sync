@@ -1,5 +1,14 @@
 # Patch Notes — LRGEX Folder Sync
 
+## v1.0.6
+- **Auto-update system**: app checks for updates on launch, downloads and swaps the exe via self-replace, relaunches automatically.
+- **Deploy pipeline**: deploy.ps1 + deploy.bat for one-click build + upload to server + GitHub Releases.
+- **MSVC toolchain**: switched from stable-gnu to stable-msvc (native Windows, smaller binaries, no MinGW).
+- **Version single-source-of-truth**: gui.rs and update.rs use env!(CARGO_PKG_VERSION). deploy.ps1 reads from Cargo.toml (read-only).
+- **README rewritten** as marketing copy.
+- **Guideline updated**: Slint section + auto-update (Approach 3) added to Rust guidelines.
+- **Clean build**: 0 warnings.
+
 ## v1.0.0 — Complete Rust Rewrite
 
 ### Architecture

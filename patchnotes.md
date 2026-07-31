@@ -1,5 +1,8 @@
 # Patch Notes — LRGEX Folder Sync
 
+## v1.1.1
+- **Uninstall freeze fix**: cleanup runs via detached batch file instead of blocking on UI thread
+
 ## v1.1.0
 - **Uninstall**: Tools menu -> type "yes" -> removes scheduled task, right-click menu, home marker
 - **Single home enforcement**: blocks creating a second home if one already exists

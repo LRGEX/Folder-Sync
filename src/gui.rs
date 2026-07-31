@@ -812,27 +812,27 @@ pub fn run() {
             return;
         }
 
-        // Remove scheduled task
-        use std::os::windows::process::CommandExt;
-        let _ = std::process::Command::new("schtasks.exe")
-            .args(["/Delete", "/TN", "LRGEX-FolderSync-Rust", "/F"])
-            .creation_flags(0x08000000u32)
-            .output();
-
-        // Remove right-click registry entry
-        if let Ok(parent) = winreg::RegKey::predef(winreg::enums::HKEY_CURRENT_USER)
-            .open_subkey_with_flags(r"Software\Classes\Directory\shell", winreg::enums::KEY_WRITE) {
-            let _ = parent.delete_subkey_all("LRGEXSync");
-        }
-
-        // Remove home marker
+        // Remove home marker now
         let _ = std::fs::remove_file(config::script_dir().join(".lrgex-home"));
 
+        // Write cleanup batch to temp (waits for app exit, then cleans up)
+        let bat_path = std::env::temp_dir().join("lrgex-cleanup.bat");
+        let bat = "@echo off\r\nping 127.0.0.1 -n 3 > nul\r\nschtasks /Delete /TN \"LRGEX-FolderSync-Rust\" /F >nul 2>&1\r\nreg delete \"HKCU\\Software\\Classes\\Directory\\shell\\LRGEXSync\" /f >nul 2>&1\r\ndel \"%~f0\"\r\n";
+        let _ = std::fs::write(&bat_path, bat);
+
+        // Show goodbye
         rfd::MessageDialog::new()
             .set_title("Uninstalled")
-            .set_description("Scheduled task and right-click menu removed.\n\nYou can now safely delete this folder.")
+            .set_description("Cleanup will finish in a moment.\n\nYou can now safely delete this folder.")
             .set_buttons(rfd::MessageButtons::Ok)
             .show();
+
+        // Launch cleanup batch detached, then exit immediately
+        use std::os::windows::process::CommandExt;
+        let _ = std::process::Command::new("cmd.exe")
+            .args(["/c", bat_path.to_str().unwrap_or("")])
+            .creation_flags(0x08000000u32)
+            .spawn();
 
         std::process::exit(0);
     });

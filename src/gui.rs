@@ -122,7 +122,7 @@ slint::slint! {
                 Button { text: "Browse"; clicked => { root.browse-clicked(); } }
             }
 
-            // Synced folders list (right under source input, shows full paths)
+            // Backed up folders list (right under source input, shows full paths)
             Text { text: "Backed up folders:"; color: #aaa; font-size: 12px; }
             ScrollView {
                 height: 200px;
@@ -348,7 +348,7 @@ pub fn run() {
         });
     }
 
-    // --- Link Folder ---
+    // --- Backup Folder ---
     {
         let w = app.as_weak();
         app.on_link_clicked(move || {

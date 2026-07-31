@@ -28,7 +28,7 @@
 - **Logo embedded** in the binary via @image-url (compile-time, no runtime file needed).
 - **Health lamp** — honest status: RED if task not registered, AMBER if waiting/syncing, GREEN if last sync succeeded. Refreshes live every 30 seconds.
 - **Tools dropdown menu** — Health Check, Remove, Export/Import Config, Right-Click Sync, View Sync Log, Set Sync Interval, Manage Exclusions.
-- **Synced folders list** with full paths, auto-restore status, per-folder Versions button.
+- **Backed up folders list** with full paths, auto-restore status, per-folder Versions button.
 - **Folder selection** with left accent bar highlight (clean, not full orange fill).
 - **No console window** — `#![windows_subsystem = "windows"]` hides the terminal completely.
 

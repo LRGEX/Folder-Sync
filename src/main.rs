@@ -32,11 +32,22 @@ fn main() {
         return;
     }
     if !link_path.is_empty() {
+        // Confirm before syncing (prevents accidental right-click)
+        let leaf = std::path::Path::new(&link_path)
+            .file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+        let confirm = rfd::MessageDialog::new()
+            .set_title("Sync Folder")
+            .set_description(&format!("Sync '{}' to your backup?", leaf))
+            .set_buttons(rfd::MessageButtons::YesNo)
+            .show() == rfd::MessageDialogResult::Yes;
+        if !confirm { return; }
+
         let mut cfg = config::load_config();
         cfg.junctions.retain(|j| j.source_path != link_path);
         cfg.junctions.push(config::Junction { source_path: link_path.clone(), auto_restore: true, created: synclog::timestamp() });
         config::save_config(&cfg);
-        let (_, _) = sync::sync_pair_to_cloud(&link_path, &cfg.excluded_names, cfg.trash_retention_days);
+        let (ok, _) = sync::sync_pair_to_cloud(&link_path, &cfg.excluded_names, cfg.trash_retention_days);
+        if ok { crate::health::write_status(1, 0, 0, &[]); }
         return;
     }
     gui::run();

@@ -144,12 +144,15 @@ slint::slint! {
                                 text: entry.path;
                                 color: i == root.selected-index ? #cb803c : #f0f0f0;
                                 vertical-alignment: center;
+                                horizontal-stretch: 1;
                                 overflow: elide;
                             }
                             Text {
                                 text: entry.auto_restore;
                                 color: entry.auto_restore == "ON" ? #4caf50 : #888;
                                 vertical-alignment: center;
+                                width: 30px;
+                                horizontal-alignment: center;
                             }
                             Rectangle {
                                 width: 68px;
@@ -168,13 +171,13 @@ slint::slint! {
             // Action buttons (at the bottom)
             HorizontalBox {
                 spacing: 8px;
-                Button { text: "Backup Folder"; clicked => { root.link-clicked(); } }
-                Button { text: "Restore Saved"; clicked => { root.restore-clicked(); } }
+                Button { text: "Backup Folder"; horizontal-stretch: 1; clicked => { root.link-clicked(); } }
+                Button { text: "Restore Saved"; horizontal-stretch: 1; clicked => { root.restore-clicked(); } }
             }
             HorizontalBox {
                 spacing: 8px;
-                Button { text: "Toggle Auto-Restore"; clicked => { root.toggle-clicked(); } }
-                Button { text: "Remove"; clicked => { root.remove-clicked(); } }
+                Button { text: "Toggle Auto-Restore"; horizontal-stretch: 1; clicked => { root.toggle-clicked(); } }
+                Button { text: "Remove"; horizontal-stretch: 1; clicked => { root.remove-clicked(); } }
             }
 
             Text { text: root.status-text; color: #cb803c; font-size: 12px; height: 28px; }
@@ -376,6 +379,7 @@ pub fn run() {
                 let cfg = config::load_config();
                 if cfg.junctions.iter().any(|j| j.source_path == path) {
                     let (ok, msg) = sync::sync_pair_to_cloud(&path, &cfg.excluded_names, cfg.trash_retention_days);
+                    if ok { health::write_status(1, 0, 0, &[]); }
                     a.set_status_text(if ok { "Re-synced.".into() } else { msg.into() });
                     return;
                 }
@@ -393,6 +397,7 @@ pub fn run() {
                 });
                 config::save_config(&c2);
                 let (ok, msg) = sync::sync_pair_to_cloud(&path, &c2.excluded_names, c2.trash_retention_days);
+                if ok { health::write_status(1, 0, 0, &[]); }
                 refresh_folders(&a);
                 a.set_status_text(if ok { "Linked.".into() } else { msg.into() });
         });
@@ -767,19 +772,47 @@ pub fn run() {
         });
     }
 
-    // Periodic health refresh every 30 seconds
+    // Shared cache for last health result (avoids schtasks on every 3s tick)
+    let health_cache: std::rc::Rc<std::cell::RefCell<(slint::SharedString, slint::Color)>> =
+        std::rc::Rc::new(std::cell::RefCell::new((" Checking...".into(), slint::Color::from_rgb_u8(76, 175, 80))));
+
+    // Fast progress check every 3 seconds (just reads a file — no process spawn)
+    let progress_timer = slint::Timer::default();
+    {
+        let w = app.as_weak();
+        let cache = health_cache.clone();
+        progress_timer.start(slint::TimerMode::Repeated, std::time::Duration::from_secs(3), move || {
+            let progress = synclog::read_progress();
+            if let Some(a) = w.upgrade() {
+                if !progress.is_empty() {
+                    a.set_health_text(format!(" {} ", progress).into());
+                    a.set_health_color(slint::Color::from_rgb_u8(200, 140, 0));
+                } else {
+                    let cached = cache.borrow();
+                    a.set_health_text(cached.0.clone());
+                    a.set_health_color(cached.1);
+                }
+            }
+        });
+    }
+
+    // Periodic full health refresh every 30 seconds
     let health_timer = slint::Timer::default();
     {
         let w = app.as_weak();
+        let cache = health_cache.clone();
         health_timer.start(slint::TimerMode::Repeated, std::time::Duration::from_secs(30), move || {
             let h = health::get_health();
+            let text: slint::SharedString = format!(" {} - {} ", h.label, h.reason).into();
+            let color = match h.status.as_str() {
+                "GREEN" => slint::Color::from_rgb_u8(76, 175, 80),
+                "AMBER" => slint::Color::from_rgb_u8(200, 140, 0),
+                _ => slint::Color::from_rgb_u8(200, 30, 30),
+            };
+            *cache.borrow_mut() = (text.clone(), color);
             if let Some(a) = w.upgrade() {
-                a.set_health_text(format!(" {} - {} ", h.label, h.reason).into());
-                a.set_health_color(match h.status.as_str() {
-                    "GREEN" => slint::Color::from_rgb_u8(76, 175, 80),
-                    "AMBER" => slint::Color::from_rgb_u8(200, 140, 0),
-                    _ => slint::Color::from_rgb_u8(200, 30, 30),
-                });
+                a.set_health_text(text);
+                a.set_health_color(color);
             }
         });
     }

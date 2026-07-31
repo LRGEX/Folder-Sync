@@ -1,6 +1,6 @@
 [package]
 name = "folder_sync"
-version = "1.1.1"
+version = "1.2.0"
 edition = "2021"
 
 [dependencies]
@@ -12,6 +12,8 @@ chrono = "0.4"
 rfd = "0.15"
 ureq = { version = "2", features = ["json"] }
 self-replace = "1"
+tar = "0.4"
+zstd = "0.13"
 
 [profile.release]
 lto = true

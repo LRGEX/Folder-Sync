@@ -26,6 +26,18 @@ pub fn write(msg: &str) {
     }
 }
 
+pub fn write_progress(msg: &str) {
+    let path = crate::config::script_dir().join("sync-progress.txt");
+    let _ = std::fs::write(&path, msg);
+}
+
+pub fn read_progress() -> String {
+    std::fs::read_to_string(crate::config::script_dir().join("sync-progress.txt"))
+        .unwrap_or_default()
+        .trim()
+        .to_string()
+}
+
 pub fn read_tail(n: usize) -> String {
     match std::fs::read_to_string(log_path()) {
         Ok(data) => {

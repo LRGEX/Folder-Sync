@@ -1,5 +1,38 @@
 # Patch Notes — LRGEX Folder Sync
 
+## v1.2.0
+- **Compression switched to tar+zstd**: 100x faster than LZMA2, same or better ratio
+- **Backup folder structure**: all backups now inside `backup/<folder-name>/` — clean home root
+- **No staging**: compresses directly from source (no robocopy temp copy)
+- **Rename fix**: copy+delete fallback when OneDrive locks files
+- **UI layout fix**: ON/OFF status fixed position, buttons equal width
+- **Compression progress**: health lamp shows "Compressing [folder]..." in real-time
+- **Health status**: writes immediately on manual sync
+- **Right-click confirmation**: Yes/No before syncing
+- **Snapshot restore fix**: `.tar.zst` extension detection
+
+## v1.1.3
+- **Compression switched to tar+zstd**: 100x faster than LZMA2, same or better ratio. Hermes compresses in seconds, not minutes.
+- **No staging**: compresses directly from source (no robocopy temp copy)
+- **UI layout fix**: ON/OFF status fixed position, buttons equal width
+- **Compression progress**: health lamp shows "Compressing [folder]..." in real-time (3-second polling)
+- **Exclusions**: properly skipped during compression
+- **Health status**: writes immediately on manual sync, not just scheduled cycles
+- **Right-click confirmation**: Yes/No before syncing
+- **Health cache**: 3-second timer restores cached health when progress clears
+
+## v1.1.2
+- **Compression**: all backups now compressed as .7z (LZMA2) instead of raw files
+- **Space savings**: 50 small files compressed from 58K to 3.9K
+- **Timestamps preserved**: files restore with exact original modification times (game saves sort correctly)
+- **Migration**: existing raw folder backups auto-compress to .7z on first sync
+- **Change detection**: file count + total size (catches symmetric add+delete)
+- **Versioning**: snapshots are .7z files with hardlink deduplication
+- **Corruption handling**: corrupted .7z fails gracefully, logged, no garbage files
+- **Uninstall fix**: cleanup runs via detached batch, no UI freeze
+- **Self-cleaning scheduled task**: VBS runner with 3-miss grace period
+- **Single home enforcement**: blocks second installation
+
 ## v1.1.1
 - **Uninstall freeze fix**: cleanup runs via detached batch file instead of blocking on UI thread
 

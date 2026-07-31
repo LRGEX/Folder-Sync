@@ -111,3 +111,18 @@ pub fn ensure_versions_setup() {
 pub fn trash_path_for(leaf: &str) -> PathBuf {
     trash_base().join(leaf)
 }
+
+/// Backup directory: home/backup/<folder-name>/
+pub fn backup_dir_for(leaf: &str) -> PathBuf {
+    script_dir().join("backup").join(leaf)
+}
+
+/// Backup file path: home/backup/<folder-name>/<folder-name>.tar.zst
+pub fn backup_file_for(leaf: &str) -> PathBuf {
+    backup_dir_for(leaf).join(format!("{}.tar.zst", leaf))
+}
+
+/// Sidecar path: home/backup/<folder-name>/<folder-name>.tar.zst.size
+pub fn sidecar_for(leaf: &str) -> PathBuf {
+    backup_dir_for(leaf).join(format!("{}.tar.zst.size", leaf))
+}

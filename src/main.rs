@@ -46,7 +46,7 @@ fn main() {
         cfg.junctions.retain(|j| j.source_path != link_path);
         cfg.junctions.push(config::Junction { source_path: link_path.clone(), auto_restore: true, created: synclog::timestamp() });
         config::save_config(&cfg);
-        let (ok, _) = sync::sync_pair_to_cloud(&link_path, &cfg.excluded_names, cfg.trash_retention_days);
+        let (ok, _) = sync::sync_pair_to_cloud(&link_path, &cfg.excluded_names, cfg.trash_retention_days, true);
         if ok { crate::health::write_status(1, 0, 0, &[]); }
         return;
     }

@@ -1,5 +1,9 @@
 # Patch Notes — LRGEX Folder Sync
 
+## v1.2.6
+- Backup Folder button forces compression (no more silent skip)
+- Health bar shows "Compressing [folder]..." during manual compression
+
 ## v1.2.5
 - Exe renamed to LRGEXSync.exe everywhere (Cargo [[bin]] name)
 - Batch updater retry loop for OneDrive locks

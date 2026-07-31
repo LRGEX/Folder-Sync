@@ -399,9 +399,12 @@ pub fn run() {
                 }
                 let cfg = config::load_config();
                 if cfg.junctions.iter().any(|j| j.source_path == path) {
-                    let (ok, msg) = sync::sync_pair_to_cloud(&path, &cfg.excluded_names, cfg.trash_retention_days);
+                    let leaf_name = std::path::Path::new(&path).file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+                    crate::synclog::write_progress(&format!("Compressing {}...", leaf_name));
+                    let (ok, msg) = sync::sync_pair_to_cloud(&path, &cfg.excluded_names, cfg.trash_retention_days, true);
+                    crate::synclog::write_progress("");
                     if ok { health::write_status(1, 0, 0, &[]); }
-                    a.set_status_text(if ok { "Re-synced.".into() } else { msg.into() });
+                    a.set_status_text(if ok { "Compressed.".into() } else { msg.into() });
                     return;
                 }
                 let leaf = std::path::Path::new(&path)
@@ -417,10 +420,12 @@ pub fn run() {
                     source_path: path.clone(), auto_restore: ar, created: synclog::timestamp(),
                 });
                 config::save_config(&c2);
-                let (ok, msg) = sync::sync_pair_to_cloud(&path, &c2.excluded_names, c2.trash_retention_days);
+                crate::synclog::write_progress(&format!("Compressing {}...", leaf));
+                let (ok, msg) = sync::sync_pair_to_cloud(&path, &c2.excluded_names, c2.trash_retention_days, true);
+                crate::synclog::write_progress("");
                 if ok { health::write_status(1, 0, 0, &[]); }
                 refresh_folders(&a);
-                a.set_status_text(if ok { "Linked.".into() } else { msg.into() });
+                a.set_status_text(if ok { "Compressed.".into() } else { msg.into() });
         });
     }
 

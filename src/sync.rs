@@ -182,7 +182,7 @@ fn clean_versions(versions_folder: &Path, retention_days: i32) {
 
 // ==================== SYNC ENGINE ====================
 
-pub fn sync_pair_to_cloud(source: &str, excluded: &[String], retention_days: i32) -> (bool, String) {
+pub fn sync_pair_to_cloud(source: &str, excluded: &[String], retention_days: i32, force: bool) -> (bool, String) {
     if source.is_empty() || !Path::new(source).exists() {
         return (false, "source does not exist".into());
     }
@@ -217,7 +217,7 @@ pub fn sync_pair_to_cloud(source: &str, excluded: &[String], retention_days: i32
     let (current_size, current_count) = compute_stats(Path::new(source), excluded);
     let (stored_size, stored_count) = read_stored_stats(&sidecar);
 
-    if current_size != stored_size || current_count != stored_count || !backup_7z.exists() {
+    if force || current_size != stored_size || current_count != stored_count || !backup_7z.exists() {
         // Something changed — create snapshot of old backup, then re-compress
         if backup_7z.exists() {
             create_snapshot(&backup_7z, &versions_folder);
@@ -316,7 +316,7 @@ pub fn sync_all_pairs() {
             }
         } else {
             crate::synclog::write_progress(&format!("Compressing {}...", leaf));
-            let (success, reason) = sync_pair_to_cloud(&j.source_path, &cfg.excluded_names, cfg.trash_retention_days);
+            let (success, reason) = sync_pair_to_cloud(&j.source_path, &cfg.excluded_names, cfg.trash_retention_days, false);
             crate::synclog::write_progress("");
             if success {
                 ok += 1;

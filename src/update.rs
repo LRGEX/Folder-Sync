@@ -54,7 +54,7 @@ pub fn check_for_updates() {
     // Download
     let temp_exe = std::env::temp_dir().join("folder_sync_update.exe");
 
-    let resp = match ureq::get(&manifest.platforms.windows.url).call() {
+    let resp = match ureq::get(&format!("{}?v={}", manifest.platforms.windows.url, manifest.version)).call() {
         Ok(r) => r,
         Err(e) => { show_error(&format!("Download failed: {}", e)); return; }
     };

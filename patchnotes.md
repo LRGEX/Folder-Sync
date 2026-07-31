@@ -1,5 +1,8 @@
 # Patch Notes — LRGEX Folder Sync
 
+## v1.2.7
+- Cache-buster fix: download URL appends ?v=version (bypasses Cloudflare cache)
+
 ## v1.2.6
 - Backup Folder button forces compression (no more silent skip)
 - Health bar shows "Compressing [folder]..." during manual compression

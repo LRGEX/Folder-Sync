@@ -102,27 +102,6 @@ Every folder goes back to its exact original path.
 
 ---
 
-## Configuration
-
-Stored in `junction-config.json` next to the exe:
-
-```json
-{
-  "Junctions": [
-    {
-      "SourcePath": "C:\\Users\\you\\Saved Games\\Cyberpunk",
-      "AutoRestore": true,
-      "Created": "2025-07-30 12:00:00"
-    }
-  ],
-  "SyncIntervalMinutes": 120,
-  "ExcludedNames": ["pending_messages"],
-  "TrashRetentionDays": 90
-}
-```
-
----
-
 ## License
 
 MIT License. See [LICENSE](LICENSE).

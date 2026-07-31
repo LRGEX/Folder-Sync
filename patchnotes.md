@@ -1,5 +1,8 @@
 # Patch Notes — LRGEX Folder Sync
 
+## v1.2.1
+- **UI fix**: all 4 bottom buttons equal width (min-width + stretch)
+
 ## v1.2.0
 - **Compression switched to tar+zstd**: 100x faster than LZMA2, same or better ratio
 - **Backup folder structure**: all backups now inside `backup/<folder-name>/` — clean home root

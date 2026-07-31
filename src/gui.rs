@@ -168,16 +168,16 @@ slint::slint! {
                 }
             }
 
-            // Action buttons (at the bottom)
+            // Action buttons (at the bottom — all equal width)
             HorizontalBox {
                 spacing: 8px;
-                Button { text: "Backup Folder"; horizontal-stretch: 1; clicked => { root.link-clicked(); } }
-                Button { text: "Restore Saved"; horizontal-stretch: 1; clicked => { root.restore-clicked(); } }
+                Button { text: "Backup Folder"; horizontal-stretch: 1; min-width: 250px; clicked => { root.link-clicked(); } }
+                Button { text: "Restore Saved"; horizontal-stretch: 1; min-width: 250px; clicked => { root.restore-clicked(); } }
             }
             HorizontalBox {
                 spacing: 8px;
-                Button { text: "Toggle Auto-Restore"; horizontal-stretch: 1; clicked => { root.toggle-clicked(); } }
-                Button { text: "Remove"; horizontal-stretch: 1; clicked => { root.remove-clicked(); } }
+                Button { text: "Toggle Auto-Restore"; horizontal-stretch: 1; min-width: 250px; clicked => { root.toggle-clicked(); } }
+                Button { text: "Remove"; horizontal-stretch: 1; min-width: 250px; clicked => { root.remove-clicked(); } }
             }
 
             Text { text: root.status-text; color: #cb803c; font-size: 12px; height: 28px; }

@@ -32,8 +32,7 @@ pub fn write_status(ok: i32, fail: i32, restored: i32, names: &[String]) {
     }
 }
 
-/// Task registered?
-fn task_exists() -> bool {
+pub fn task_exists() -> bool {
     let output = std::process::Command::new("schtasks.exe")
         .args(&["/Query", "/TN", "LRGEX-FolderSync-Rust", "/FO", "LIST"])
         .creation_flags(0x08000000u32)

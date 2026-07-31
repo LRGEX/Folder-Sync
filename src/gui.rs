@@ -59,6 +59,7 @@ slint::slint! {
         callback import-clicked();
         callback interval-clicked();
         callback exclusions-clicked();
+        callback uninstall-clicked();
         callback versions-clicked(int);
         callback restore-version();
         callback close-versions();
@@ -230,6 +231,11 @@ slint::slint! {
                         label: "Manage Exclusions...";
                         clicked => { root.exclusions-clicked(); root.menu-open = false; }
                     }
+                    Rectangle { height: 1px; background: #3a3a3a; }
+                    MenuItem {
+                        label: "Uninstall";
+                        clicked => { root.uninstall-clicked(); root.menu-open = false; }
+                    }
                 }
             }
         }
@@ -314,6 +320,15 @@ use crate::{config, sync, health, synclog};
 pub fn run() {
     // First-run: relocate to home folder if needed
     if !config::is_home() {
+        // Check if already installed elsewhere (scheduled task exists)
+        if health::task_exists() {
+            rfd::MessageDialog::new()
+                .set_title("Already Installed")
+                .set_description("Folder Sync is already installed. Open it from your existing home folder.\n\nTo move to a new location: Tools -> Uninstall first, then run this exe again.")
+                .set_buttons(rfd::MessageButtons::Ok)
+                .show();
+            return;
+        }
         setup_home();
         return;
     }
@@ -773,6 +788,53 @@ pub fn run() {
     let update_timer = slint::Timer::default();
     update_timer.start(slint::TimerMode::SingleShot, std::time::Duration::from_secs(2), || {
         crate::update::check_for_updates();
+    });
+
+    // --- Uninstall ---
+    app.on_uninstall_clicked(|| {
+        let input = ps_inputbox(
+            "Type 'yes' to uninstall.\n\nThis removes the scheduled task, right-click menu, and home marker.\nYour backup files will NOT be deleted.",
+            "Uninstall",
+            ""
+        );
+        let has_input = input.is_some();
+        let confirmed = input
+            .map(|s| s.trim().eq_ignore_ascii_case("yes"))
+            .unwrap_or(false);
+        if !confirmed {
+            if has_input {
+                rfd::MessageDialog::new()
+                    .set_title("Uninstall")
+                    .set_description("Cancelled.")
+                    .set_buttons(rfd::MessageButtons::Ok)
+                    .show();
+            }
+            return;
+        }
+
+        // Remove scheduled task
+        use std::os::windows::process::CommandExt;
+        let _ = std::process::Command::new("schtasks.exe")
+            .args(["/Delete", "/TN", "LRGEX-FolderSync-Rust", "/F"])
+            .creation_flags(0x08000000u32)
+            .output();
+
+        // Remove right-click registry entry
+        if let Ok(parent) = winreg::RegKey::predef(winreg::enums::HKEY_CURRENT_USER)
+            .open_subkey_with_flags(r"Software\Classes\Directory\shell", winreg::enums::KEY_WRITE) {
+            let _ = parent.delete_subkey_all("LRGEXSync");
+        }
+
+        // Remove home marker
+        let _ = std::fs::remove_file(config::script_dir().join(".lrgex-home"));
+
+        rfd::MessageDialog::new()
+            .set_title("Uninstalled")
+            .set_description("Scheduled task and right-click menu removed.\n\nYou can now safely delete this folder.")
+            .set_buttons(rfd::MessageButtons::Ok)
+            .show();
+
+        std::process::exit(0);
     });
 
     app.run().unwrap();

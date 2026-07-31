@@ -1,5 +1,13 @@
 # Patch Notes — LRGEX Folder Sync
 
+## v1.1.0
+- **Uninstall**: Tools menu -> type "yes" -> removes scheduled task, right-click menu, home marker
+- **Single home enforcement**: blocks creating a second home if one already exists
+- **VBS runner**: scheduled task runs via wscript.exe (no console window flash), self-cleans after 3 consecutive exe-misses (prevents OneDrive false positives)
+- **Non-NTFS fallback**: hardlinks fall back to copy on FAT32/exFAT/network drives
+- **Assets folder**: icons moved to assets/
+- **Single-home check**: uses health::task_exists() to detect existing installation
+
 ## v1.0.8
 - **Auto-update fix**: update.rs rewritten with download validation (size check), proper error dialogs at every step, no more silent failures.
 - **Assets folder**: icons moved to assets/ for cleaner project structure.

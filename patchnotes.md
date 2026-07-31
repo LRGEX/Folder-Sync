@@ -12,7 +12,7 @@
 ## v1.0.0 — Complete Rust Rewrite
 
 ### Architecture
-- **Complete rewrite from PowerShell to Rust** (edition 2021, GNU toolchain).
+- **Complete rewrite from PowerShell to Rust** (edition 2021, MSVC toolchain).
 - **Slint UI** — dark-themed native interface replacing Windows Forms. LRGEX branding, logo, Tools dropdown menu.
 - **No more PowerShell dependency** — single self-contained `.exe`, no script execution policy issues.
 

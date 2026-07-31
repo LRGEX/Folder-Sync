@@ -2,7 +2,6 @@
 
 ## v1.0.8
 - **Auto-update fix**: update.rs rewritten with download validation (size check), proper error dialogs at every step, no more silent failures.
-- **Non-NTFS fallback**: hardlinks now fall back to full copies on non-NTFS drives (FAT32, exFAT, network).
 - **Assets folder**: icons moved to assets/ for cleaner project structure.
 - **Git history purged**: deploy scripts removed from all past commits.
 - **.gitattributes**: silenced CRLF/LF warnings.

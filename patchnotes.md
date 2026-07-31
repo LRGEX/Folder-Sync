@@ -6,7 +6,7 @@
 - **MSVC toolchain**: native Windows toolchain (smaller binaries, no MinGW).
 - **Version single-source-of-truth**: gui.rs and update.rs use env!(CARGO_PKG_VERSION). deploy.ps1 reads from Cargo.toml (read-only).
 - **README rewritten** as marketing copy.
-- **AGENT.md** updated for MSVC toolchain, auto-update, and deploy workflow.
+- **Docs updated** for MSVC, auto-update, and deploy workflow.
 - **Clean build**: 0 warnings.
 
 ## v1.0.0 — Complete Rust Rewrite

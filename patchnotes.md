@@ -1,5 +1,13 @@
 # Patch Notes — LRGEX Folder Sync
 
+## v1.2.2
+- **Root cause fix**: scheduled task uses canonical home path from registry, not current_exe()
+- **No VBS runner**: task runs exe directly (windows_subsystem=windows, zero console flash)
+- **Single home enforcement**: registry key HKCU\SOFTWARE\LRGEX\FolderSync\HomePath is the ONE source of truth
+- **Migration**: existing installs auto-promote to registry on first launch
+- **Stray copy protection**: running from non-home path warns user, refuses to retarget task
+- **Uninstall**: clears registry key too
+
 ## v1.2.1
 - **UI fix**: all 4 bottom buttons equal width (min-width + stretch)
 

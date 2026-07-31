@@ -323,11 +323,14 @@ use crate::{config, sync, health, synclog};
 pub fn run() {
     // First-run: relocate to home folder if needed
     if !config::is_home() {
-        // Check if already installed elsewhere (scheduled task exists)
-        if health::task_exists() {
+        // Check if already installed elsewhere
+        if health::task_exists() || config::canonical_home().is_some() {
+            let existing = config::canonical_home()
+                .map(|h| h.to_string_lossy().to_string())
+                .unwrap_or_else(|| "an unknown location".to_string());
             rfd::MessageDialog::new()
                 .set_title("Already Installed")
-                .set_description("Folder Sync is already installed. Open it from your existing home folder.\n\nTo move to a new location: Tools -> Uninstall first, then run this exe again.")
+                .set_description(&format!("Folder Sync is already installed at:\n{}\n\nOpen it from there.\n\nTo move: Tools -> Uninstall first, then run this exe again.", existing))
                 .set_buttons(rfd::MessageButtons::Ok)
                 .show();
             return;
@@ -336,7 +339,24 @@ pub fn run() {
         return;
     }
 
-    // Self-heal: ensure the scheduled task is registered on every launch
+    // Migration: if canonical home not in registry yet, promote current home
+    if config::canonical_home().is_none() {
+        config::set_canonical_home(&config::script_dir());
+    }
+
+    // Verify: this exe IS the canonical home exe
+    if let Some(canonical) = config::canonical_home() {
+        if config::script_dir() != canonical {
+            rfd::MessageDialog::new()
+                .set_title("Wrong Copy")
+                .set_description(&format!("This is not the installed copy.\n\nThe real installation is at:\n{}", canonical.display()))
+                .set_buttons(rfd::MessageButtons::Ok)
+                .show();
+            return;
+        }
+    }
+
+    // Self-heal: register task using canonical home (never current_exe)
     let cfg0 = config::load_config();
     sync::register_sync_task(cfg0.sync_interval_minutes);
     config::ensure_versions_setup();
@@ -845,8 +865,9 @@ pub fn run() {
             return;
         }
 
-        // Remove home marker now
+        // Remove home marker + canonical home from registry
         let _ = std::fs::remove_file(config::script_dir().join(".lrgex-home"));
+        config::clear_canonical_home();
 
         // Write cleanup batch to temp (waits for app exit, then cleans up)
         let bat_path = std::env::temp_dir().join("lrgex-cleanup.bat");
@@ -893,6 +914,8 @@ RECOMMENDED: a folder inside a cloud service (OneDrive, Google Drive, etc.) so y
             let dest = home.join(&exe_name);
             let _ = std::fs::copy(&exe, &dest);
             let _ = std::fs::write(home.join(".lrgex-home"), "LRGEX Folder Sync Home");
+            // Set canonical home in registry — ONE source of truth
+            config::set_canonical_home(&home);
 
             let cfg_path = home.join("junction-config.json");
             if !cfg_path.exists() {

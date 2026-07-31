@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 #[derive(Serialize, Deserialize, Clone)]
 #[serde(rename_all = "PascalCase")]
@@ -68,6 +68,34 @@ pub fn save_config(cfg: &Config) {
 
 pub fn is_home() -> bool {
     script_dir().join(".lrgex-home").exists()
+}
+
+const REG_PATH: &str = "SOFTWARE\\LRGEX\\FolderSync";
+
+/// Canonical home path — stored in registry, ONE source of truth.
+/// register_sync_task uses THIS, never current_exe().
+pub fn canonical_home() -> Option<PathBuf> {
+    winreg::RegKey::predef(winreg::enums::HKEY_CURRENT_USER)
+        .open_subkey(REG_PATH)
+        .ok()
+        .and_then(|k| k.get_value::<String, _>("HomePath").ok())
+        .map(PathBuf::from)
+}
+
+/// Set canonical home in registry (called once during first-run setup)
+pub fn set_canonical_home(path: &Path) {
+    if let Ok(key) = winreg::RegKey::predef(winreg::enums::HKEY_CURRENT_USER)
+        .create_subkey(REG_PATH) {
+        let _ = key.0.set_value("HomePath", &path.to_string_lossy().to_string());
+    }
+}
+
+/// Delete canonical home from registry (called during uninstall)
+pub fn clear_canonical_home() {
+    if let Ok(parent) = winreg::RegKey::predef(winreg::enums::HKEY_CURRENT_USER)
+        .open_subkey_with_flags("SOFTWARE\\LRGEX", winreg::enums::KEY_WRITE) {
+        let _ = parent.delete_subkey_all("FolderSync");
+    }
 }
 
 pub fn pair_cloud_path(source: &str) -> PathBuf {

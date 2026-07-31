@@ -370,28 +370,16 @@ pub fn restore_snapshot(snapshot_dir: &Path, source: &str) -> (bool, String) {
 // ==================== SCHEDULED TASK ====================
 
 /// Register (or update) the Windows Scheduled Task.
-/// Uses a VBS runner with grace-period self-cleaning.
+/// Uses CANONICAL HOME from registry — never current_exe().
+/// This prevents stray copies from retargeting the task.
 pub fn register_sync_task(interval_minutes: i32) -> bool {
-    let exe = match std::env::current_exe() {
-        Ok(p) => p.to_string_lossy().to_string(),
-        Err(_) => return false,
+    let home = match config::canonical_home() {
+        Some(h) => h,
+        None => return false, // not registered yet — can't register task
     };
+    let exe = home.join("folder_sync.exe");
+    let task_cmd = format!("\"{}\" -sync", exe.to_string_lossy());
 
-    // Create VBS runner in LOCALAPPDATA
-    let local_app = std::env::var("LOCALAPPDATA").unwrap_or_else(|_| ".".into());
-    let runner_dir = std::path::PathBuf::from(&local_app).join("LRGEX");
-    let _ = std::fs::create_dir_all(&runner_dir);
-    let runner_path = runner_dir.join("sync-runner.vbs");
-    let count_file = runner_dir.join("ghost-count.txt");
-    let vbs = format!(
-        "Set fso = CreateObject(\"Scripting.FileSystemObject\")\r\nSet sh = CreateObject(\"WScript.Shell\")\r\nexe = \"{}\"\r\ncountFile = \"{}\"\r\nIf fso.FileExists(exe) Then\r\n  On Error Resume Next\r\n  fso.DeleteFile countFile\r\n  On Error GoTo 0\r\n  sh.Run \"\"\"\" & exe & \"\"\" -sync\", 0, False\r\n  WScript.Quit\r\nEnd If\r\nmisses = 0\r\nIf fso.FileExists(countFile) Then\r\n  Set f = fso.OpenTextFile(countFile, 1)\r\n  misses = CInt(f.ReadLine)\r\n  f.Close\r\nEnd If\r\nmisses = misses + 1\r\nIf misses >= 3 Then\r\n  sh.Run \"schtasks /Delete /TN \"\"LRGEX-FolderSync-Rust\"\" /F\", 0, True\r\n  sh.Run \"reg delete \"\"HKCU\\Software\\Classes\\Directory\\shell\\LRGEXSync\"\" /f\", 0, True\r\n  On Error Resume Next\r\n  fso.DeleteFile countFile\r\n  fso.DeleteFile WScript.ScriptFullName\r\n  On Error GoTo 0\r\nElse\r\n  Set f = fso.CreateTextFile(countFile, True)\r\n  f.Write CStr(misses)\r\n  f.Close\r\nEnd If\r\n",
-        exe,
-        count_file.to_string_lossy()
-    );
-    let _ = std::fs::write(&runner_path, vbs);
-
-    // Register task to run the VBS via wscript.exe
-    let task_cmd = format!("wscript.exe \"{}\"", runner_path.to_string_lossy());
     match Command::new("schtasks.exe")
         .args([
             "/Create",

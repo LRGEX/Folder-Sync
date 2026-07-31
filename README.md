@@ -47,7 +47,7 @@ You set it once. You forget it exists. When you need it, your files are there.
 - **Snapshot versioning** — every change creates a snapshot. Roll back any folder to any point in the last 90 days
 - **Auto-restore** — after a format, missing folders are restored automatically
 - **Right-click integration** — right-click any folder in Explorer to sync it
-- **Configurable sync interval** — every 5 minutes or every 12 hours, your choice
+- **Configurable sync interval** — 1 minute or more, your choice
 - **Exclusions** — skip app-locked subfolders that cause false errors
 - **Export/Import** — move your folder list to a new PC
 - **Health lamp** — live status: green (safe), amber (syncing), red (problem)

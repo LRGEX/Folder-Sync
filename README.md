@@ -46,11 +46,14 @@ You set it once. You forget it exists. When you need it, your files are there.
 ## Installation
 
 1. Download `folder_sync.exe`
-2. Run it
-3. Pick your cloud folder when asked (OneDrive, Google Drive, etc.)
-4. Right-click any folder you want to protect — select "Sync folder (LRGEX)"
+2. Run it — the app asks you to pick a **home folder**. This is where the app installs itself and stores backups. **Pick a folder inside your cloud service** (OneDrive, Google Drive, etc.) so your files survive a PC format. A local folder works too, but it won't survive a format — that's your choice.
+3. Open the app from the home folder.
+4. Go to **Tools → Right-Click Sync** to enable the File Explorer right-click menu.
+5. Right-click any folder you want to protect — select **"Sync folder (LRGEX)"**.
 
-That's it. Your folders are now backed up continuously.
+Alternatively, use the app GUI: browse for a folder, click **"Backup Folder"**.
+
+Your folders are now backed up continuously.
 
 ---
 

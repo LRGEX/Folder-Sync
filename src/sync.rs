@@ -69,7 +69,9 @@ fn create_snapshot(backup: &Path, source: &Path, snapshot: &Path) {
             has_content = true;
             if !source_path.exists() {
                 // Deleted file — hardlink (survives /MIR purge)
-                let _ = std::fs::hard_link(&backup_path, &snapshot_path);
+                if std::fs::hard_link(&backup_path, &snapshot_path).is_err() {
+                    let _ = std::fs::copy(&backup_path, &snapshot_path);
+                }
             } else {
                 let bm = std::fs::metadata(&backup_path).ok();
                 let sm = std::fs::metadata(&source_path).ok();
@@ -85,7 +87,9 @@ fn create_snapshot(backup: &Path, source: &Path, snapshot: &Path) {
                     let _ = std::fs::copy(&backup_path, &snapshot_path);
                 } else {
                     // Unchanged — hardlink (near-zero space)
-                    let _ = std::fs::hard_link(&backup_path, &snapshot_path);
+                    if std::fs::hard_link(&backup_path, &snapshot_path).is_err() {
+                        let _ = std::fs::copy(&backup_path, &snapshot_path);
+                    }
                 }
             }
         }
@@ -106,7 +110,9 @@ fn hardlink_tree(src: &Path, dst: &Path) {
                 let _ = std::fs::create_dir_all(&dst_path);
                 hardlink_tree(&src_path, &dst_path);
             } else {
-                let _ = std::fs::hard_link(&src_path, &dst_path);
+                if std::fs::hard_link(&src_path, &dst_path).is_err() {
+                    let _ = std::fs::copy(&src_path, &dst_path);
+                }
             }
         }
     }

@@ -96,7 +96,8 @@ Every folder goes back to its exact original path.
 
 ## Requirements
 
-- Windows 10/11 (NTFS required for versioning)
+- Windows 10/11
+- **NTFS recommended** for best experience — snapshot versioning uses NTFS hardlinks (near-zero disk usage per snapshot). On non-NTFS drives (FAT32, exFAT, network), versioning still works but uses full copies instead of hardlinks (more disk space).
 - A cloud service recommended (survives a format). Local folder works but won't survive a format.
 
 ---

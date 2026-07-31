@@ -4,6 +4,7 @@ mod sync;
 mod synclog;
 mod health;
 mod gui;
+mod update;
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();

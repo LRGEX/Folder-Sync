@@ -20,7 +20,6 @@ slint::slint! {
             text: label;
             color: #f0f0f0;
             vertical-alignment: center;
-            padding-left: 12px;
         }
         ta := TouchArea {
             clicked => { root.clicked(); }
@@ -28,7 +27,7 @@ slint::slint! {
     }
 
     export component App inherits Window {
-        title: "LRGEX Folder Sync";
+        title: "LRGEX Folder Sync " + root.app-version;
         icon: @image-url("../app-icon.png");
         preferred-width: 560px;
         preferred-height: 700px;
@@ -45,6 +44,7 @@ slint::slint! {
         in-out property <bool> versions-visible: false;
         in-out property <[VersionEntry]> versions-list: [];
         in-out property <int> selected-version: -1;
+        in-out property <string> app-version: "";
         in-out property <string> versions-title: "Versions";
 
         callback browse-clicked();
@@ -96,7 +96,7 @@ slint::slint! {
             }
             HorizontalLayout {
                 alignment: center;
-                Text { text: "v0.7.0"; font-size: 11px; color: #888; }
+                Text { text: "v" + root.app-version; font-size: 11px; color: #888; }
             }
 
             // Health lamp
@@ -108,7 +108,6 @@ slint::slint! {
                     color: white;
                     font-weight: 700;
                     vertical-alignment: center;
-                    padding-left: 8px;
                 }
             }
 
@@ -116,7 +115,7 @@ slint::slint! {
             HorizontalBox {
                 spacing: 6px;
                 LineEdit {
-                    placeholder-text: "Select folder to sync...";
+                    placeholder-text: "Folder to backup...";
                     text <=> root.source-text;
                     width: 440px;
                 }
@@ -124,7 +123,7 @@ slint::slint! {
             }
 
             // Synced folders list (right under source input, shows full paths)
-            Text { text: "Synced folders:"; color: #aaa; font-size: 12px; }
+            Text { text: "Backed up folders:"; color: #aaa; font-size: 12px; }
             ScrollView {
                 height: 200px;
                 VerticalBox {
@@ -144,7 +143,6 @@ slint::slint! {
                                 text: entry.path;
                                 color: i == root.selected-index ? #cb803c : #f0f0f0;
                                 vertical-alignment: center;
-                                padding-left: 10px;
                                 overflow: elide;
                             }
                             Text {
@@ -169,7 +167,7 @@ slint::slint! {
             // Action buttons (at the bottom)
             HorizontalBox {
                 spacing: 8px;
-                Button { text: "Link Folder"; clicked => { root.link-clicked(); } }
+                Button { text: "Backup Folder"; clicked => { root.link-clicked(); } }
                 Button { text: "Restore Saved"; clicked => { root.restore-clicked(); } }
             }
             HorizontalBox {
@@ -204,10 +202,6 @@ slint::slint! {
                     MenuItem {
                         label: "Junction Health Check";
                         clicked => { root.health-clicked(); root.menu-open = false; }
-                    }
-                    MenuItem {
-                        label: "Remove Junctions";
-                        clicked => { root.remove-clicked(); root.menu-open = false; }
                     }
                     Rectangle { height: 1px; background: #3a3a3a; }
                     MenuItem {
@@ -285,7 +279,6 @@ slint::slint! {
                                     text: entry.display;
                                     color: i == root.selected-version ? white : #f0f0f0;
                                     vertical-alignment: center;
-                                    padding-left: 12px;
                                 }
                             }
                         }
@@ -331,6 +324,7 @@ pub fn run() {
     config::ensure_versions_setup();
 
     let app = App::new().unwrap();
+    app.set_app_version(env!("CARGO_PKG_VERSION").into());
 
     // Initial state
     refresh_folders(&app);
@@ -358,7 +352,7 @@ pub fn run() {
     {
         let w = app.as_weak();
         app.on_link_clicked(move || {
-            w.upgrade_in_event_loop(|a| {
+            let a = match w.upgrade() { Some(a) => a, None => return };
                 let path = a.get_source_text().to_string();
                 if path.is_empty() || !std::path::Path::new(&path).exists() {
                     a.set_status_text("Invalid source folder.".into());
@@ -386,7 +380,6 @@ pub fn run() {
                 let (ok, msg) = sync::sync_pair_to_cloud(&path, &c2.excluded_names, c2.trash_retention_days);
                 refresh_folders(&a);
                 a.set_status_text(if ok { "Linked.".into() } else { msg.into() });
-            }).ok();
         });
     }
 
@@ -394,12 +387,25 @@ pub fn run() {
     {
         let w = app.as_weak();
         app.on_restore_clicked(move || {
+            let count_cfg = config::load_config();
+            if count_cfg.junctions.is_empty() { return; }
+            let confirm = rfd::MessageDialog::new()
+                .set_title("Confirm Restore")
+                .set_description(&format!("Restore {} folder(s) from backup?\nThis will overwrite current files.", count_cfg.junctions.len()))
+                .set_buttons(rfd::MessageButtons::YesNo)
+                .show() == rfd::MessageDialogResult::Yes;
+            if !confirm { return; }
             let mut count = 0;
             for j in &config::load_config().junctions {
                 let (ok, _) = sync::restore_pair_from_cloud(&j.source_path);
                 if ok { count += 1; }
             }
             let msg = format!("Restored {} folder(s).", count);
+            rfd::MessageDialog::new()
+                .set_title("Restore Complete")
+                .set_description(&msg)
+                .set_buttons(rfd::MessageButtons::Ok)
+                .show();
             w.upgrade_in_event_loop(move |a| a.set_status_text(msg.into())).ok();
         });
     }
@@ -408,9 +414,16 @@ pub fn run() {
     {
         let w = app.as_weak();
         app.on_toggle_clicked(move || {
-            w.upgrade_in_event_loop(|a| {
+            let a = match w.upgrade() { Some(a) => a, None => return };
                 let idx = a.get_selected_index();
-                if idx < 0 { a.set_status_text("Select a folder first.".into()); return; }
+                if idx < 0 {
+                    rfd::MessageDialog::new()
+                        .set_title("Toggle")
+                        .set_description("Select a folder from the list first.")
+                        .set_buttons(rfd::MessageButtons::Ok)
+                        .show();
+                    return;
+                }
                 let mut cfg = config::load_config();
                 let i = idx as usize;
                 if i >= cfg.junctions.len() { return; }
@@ -420,7 +433,6 @@ pub fn run() {
                 refresh_folders(&a);
                 a.set_status_text(format!("Auto-restore {}.", if ar { "ON" } else { "OFF" }).into());
                 a.set_selected_index(idx);
-            }).ok();
         });
     }
 
@@ -428,37 +440,36 @@ pub fn run() {
     {
         let w = app.as_weak();
         app.on_remove_clicked(move || {
-            w.upgrade_in_event_loop(|a| {
-                let idx = a.get_selected_index();
-                if idx < 0 {
-                    rfd::MessageDialog::new()
-                        .set_title("Remove")
-                        .set_description("Select a folder from the list first.")
-                        .set_buttons(rfd::MessageButtons::Ok)
-                        .show();
-                    return;
-                }
-                let mut cfg = config::load_config();
-                let i = idx as usize;
-                if i >= cfg.junctions.len() { return; }
-                let name = std::path::Path::new(&cfg.junctions[i].source_path)
-                    .file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
-                let confirm = rfd::MessageDialog::new()
-                    .set_title("Confirm Remove")
-                    .set_description(&format!("Remove '{}' from sync list?", name))
-                    .set_buttons(rfd::MessageButtons::YesNo)
-                    .show() == rfd::MessageDialogResult::Yes;
-                if !confirm { return; }
-                cfg.junctions.remove(i);
-                config::save_config(&cfg);
-                a.set_selected_index(-1);
-                refresh_folders(&a);
+            let a = match w.upgrade() { Some(a) => a, None => return };
+            let idx = a.get_selected_index();
+            if idx < 0 {
                 rfd::MessageDialog::new()
-                    .set_title("Removed")
-                    .set_description(&format!("'{}' removed from sync list.", name))
+                    .set_title("Remove")
+                    .set_description("Select a folder from the list first.")
                     .set_buttons(rfd::MessageButtons::Ok)
                     .show();
-            }).ok();
+                return;
+            }
+            let mut cfg = config::load_config();
+            let i = idx as usize;
+            if i >= cfg.junctions.len() { return; }
+            let name = std::path::Path::new(&cfg.junctions[i].source_path)
+                .file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+            let confirm = rfd::MessageDialog::new()
+                .set_title("Confirm Remove")
+                .set_description(&format!("Remove '{}' from sync list?", name))
+                .set_buttons(rfd::MessageButtons::YesNo)
+                .show() == rfd::MessageDialogResult::Yes;
+            if !confirm { return; }
+            cfg.junctions.remove(i);
+            config::save_config(&cfg);
+            a.set_selected_index(-1);
+            refresh_folders(&a);
+            rfd::MessageDialog::new()
+                .set_title("Removed")
+                .set_description(&format!("'{}' removed from sync list.", name))
+                .set_buttons(rfd::MessageButtons::Ok)
+                .show();
         });
     }
 
@@ -758,6 +769,12 @@ pub fn run() {
         });
     }
 
+    // Check for updates 2 seconds after launch (one-shot)
+    let update_timer = slint::Timer::default();
+    update_timer.start(slint::TimerMode::SingleShot, std::time::Duration::from_secs(2), || {
+        crate::update::check_for_updates();
+    });
+
     app.run().unwrap();
 }
 fn setup_home() {
@@ -846,16 +863,6 @@ fn toggle_rightclick(enable: bool) {
     }
 }
 
-fn walkdir_has_files(dir: &std::path::Path) -> bool {
-    if let Ok(entries) = std::fs::read_dir(dir) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.is_file() { return true; }
-            if path.is_dir() && walkdir_has_files(&path) { return true; }
-        }
-    }
-    false
-}
 
 fn ps_inputbox(prompt: &str, title: &str, default: &str) -> Option<String> {
     let p = prompt.replace('\'', "''");

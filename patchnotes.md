@@ -1,59 +1,55 @@
 # Patch Notes — LRGEX Folder Sync
 
-## v0.7.0
-- **Default sync interval = 120 min (2 hours)** — was 5 min. Less churn, less resource use. Change anytime via Tools → Set Sync Interval.
-- **Decoupled right-click from the sync task** — enabling/disabling the right-click context menu now ONLY manages the File Explorer entry (registry). It no longer starts/stops the background sync task. They are completely independent.
-- **Self-healing sync task** — on every GUI launch, the app checks if the background task exists and points to a valid path. If stale (old home deleted) or missing, it unregisters + re-registers with the current home. Zero stale tasks, zero manual cleanup.
-- **Removed the broken cloud-detection warning** — hardcoded path matching couldn't detect MEGA/custom cloud locations. Removed entirely; the first-run dialog already recommends a cloud folder. No more false alarms.
-- **Fixed GUI hang** — TopMost on the main form caused MessageBoxes to appear behind it (frozen UI / blue circle). Removed TopMost from the main form.
-- **VBS launcher for truly invisible sync** — the background task now runs via wscript.exe (no console) instead of PowerShell.exe -WindowStyle Hidden (which flashed a window for ~1 second).
-- **Synced-folders list in the main UI** — each linked root folder shown with Auto-Restore status (ON/OFF). Toggle or Remove per folder. Selecting a folder fills the Source box. List auto-refreshes every 30s.
-- **Absence-driven auto-restore** — the sync cycle restores a folder only when its source is missing/empty (post-format). No more 'on login' trigger. The health lamp shows 'RESTORED N folder(s)' when a restore happens.
-- **Exclude feature** — Tools → Manage Exclusions: skip app-locked subfolders (e.g. Hermes's pending_messages) via robocopy /XD.
-- **Robocopy failure reasons in the log** — failures now show the human reason (e.g. 'Access is denied.') instead of just 'SYNC FAIL'.
-- **Toggle Auto-Restore fix** — used Add-Member for pairs missing the AutoRestore field (direct assignment failed silently → always ON).
-- **Harden AutoRestore parsing** — [bool]'false' is $true in PowerShell; replaced all casts with ConvertTo-Bool helper.
-- **Custom LRGEX icon** in the right-click context menu (auto-downloads on other PCs).
-- **Console-flash fix** — VBS launcher eliminates the 1-second window flash during background sync.
-- **Title clipping fix** — hero 24pt title label height 34→48 + MiddleLeft alignment.
-- **Version at bottom-center** of the window.
-- **Rebrand** — 'Junction Sync Tool' → 'Folder Sync' everywhere.
+## v1.0.0 — Complete Rust Rewrite
 
-## v0.6.1
-- **Synced-folders list** in the main UI with per-folder Auto-Restore toggle + Remove.
-- **Absence-driven auto-restore** — the sync cycle restores a folder only when its source is missing/empty. Removed the 'on login' trigger entirely.
-- **Toggle Auto-Restore fix** — pairs missing the AutoRestore field couldn't be toggled (direct assignment failed silently). Fixed via Add-Member.
-- **Harden AutoRestore parsing** — `[bool]"false"` is `$true` in PowerShell; added `ConvertTo-Bool` helper.
-- **Robocopy failure reasons in the log** — shows the human cause (e.g. 'Access is denied.') instead of just 'SYNC FAIL'.
-- **VBS launcher** — truly invisible background sync via `wscript.exe` (no console). Was `PowerShell.exe -WindowStyle Hidden` which flashed a window for ~1 second.
-- **GUI hang fix** — removed TopMost from the main form (MessageBoxes were hidden behind it → frozen UI).
-- **Hero title** (24pt bold) + version label at bottom-center.
-- **Custom LRGEX icon** in the right-click context menu (auto-downloads on other PCs).
+### Architecture
+- **Complete rewrite from PowerShell to Rust** (edition 2021, GNU toolchain).
+- **Slint UI** — dark-themed native interface replacing Windows Forms. LRGEX branding, logo, Tools dropdown menu.
+- **No more PowerShell dependency** — single self-contained `.exe`, no script execution policy issues.
 
-## v0.6.0
-- **Exclude feature**: Tools → Manage Exclusions — list subfolder NAMES to skip during sync (e.g. `pending_messages`). robocopy runs with `/XD` for those names, so app-locked runtime folders no longer cause false failures. Resolves the `hermes\pending_messages` access-denied case (Hermes locks that folder; it's empty, so excluding it loses nothing and the lamp goes green).
+### Sync Engine
+- **Mirror sync (/MIR)** — deletions now propagate to the backup (was copy-only /E in PS version).
+- **Hardlink snapshot versioning** — before each /MIR sync, the app creates a full-folder snapshot using NTFS hardlinks. Unchanged files share disk blocks (near-zero space). Only changed files take additional storage. This is how rsync --link-dest and Apple Time Machine work.
+- **90-day retention** — old snapshots auto-delete after configurable retention period (default 90 days).
+- **Per-file change detection** — snapshots only created when something actually changed (file count, size, OR timestamp). No wasted snapshots on unchanged folders.
+- **Version restore** — "Versions" button per folder opens a clickable list of snapshots. Pick a timestamp, restore the entire folder to that point.
 
-## v0.5.9
-- **Cleaner sync log**: each cycle now has a header and tidy `[ OK ] / [FAIL] <folder> - <reason>` lines (previously verbose). Failures show the human reason (e.g. `Access is denied.`), de-duplicated across robocopy retries.
-- **Rebrand**: "Junction Sync Tool" → **"Folder Sync"** everywhere (window title, header, user-agent).
-- **Version label** moved next to the header title (small, one line beneath it) — single source `$script:AppVersion`.
-- **Documented the `hermes` failure**: `AppData\Local\hermes\pending_messages` is **locked by the Hermes app itself** — even a plain `Copy-Item` is denied ("Access to the path is denied"). It contains 0 files, so **no data is at risk**. This is not a sync bug; robocopy simply cannot copy a folder the owning app has locked. The sync logs it and continues with everything else. Resolution options: exclude that subfolder, or unlink `hermes` if its runtime data isn't needed.
+### UI
+- **Slint dark theme** with LRGEX colors (background #1e1e1e, accent #cb803c).
+- **Logo embedded** in the binary via @image-url (compile-time, no runtime file needed).
+- **Health lamp** — honest status: RED if task not registered, AMBER if waiting/syncing, GREEN if last sync succeeded. Refreshes live every 30 seconds.
+- **Tools dropdown menu** — Health Check, Remove, Export/Import Config, Right-Click Sync, View Sync Log, Set Sync Interval, Manage Exclusions.
+- **Synced folders list** with full paths, auto-restore status, per-folder Versions button.
+- **Folder selection** with left accent bar highlight (clean, not full orange fill).
+- **No console window** — `#![windows_subsystem = "windows"]` hides the terminal completely.
 
-## v0.5.8
-- **Accurate health lamp**: now reads the real sync outcome (`sync-status.json`), so green = genuinely all-OK and red = a real failure — it no longer trusts the task's exit code alone.
-- **Solid-colored lamp**: green / amber (while syncing) / red background bar — easy to see.
-- **UI sync log**: Tools → **View Sync Log**; stored locally (`%LOCALAPPDATA%\LRGEX\folder-sync.log`), capped at 2000 lines (no cloud churn).
-- **Per-link auto-restore**: linking a folder asks whether to auto-restore *that specific folder* after a format; only the folders you opt in are auto-restored.
-- **Configurable sync interval**: Tools → **Set Sync Interval…** (e.g. `120` = every 2 hours). Saved to config; survives a format.
-- **Smart auto-restore**: a folder is restored only when its original path is missing/empty (true post-format signal) — a complete no-op on normal logins.
-- **Renamed script** `onedrivesync.ps1` → **`folder-sync.ps1`** (code, `.gitignore`, README, home copy, scheduled task, and right-click registry all migrated to the new name).
-- **Fixed the silent sync-breaker**: the old task action was stored corrupted (`-File $` → error 267 "directory invalid") AND the at-logon trigger never fired mid-session (LastRunTime stayed 1999) — so new files silently stopped syncing. Replaced with a clean action + two triggers (AtLogon + Once-repeat) + immediate start. Dropped `-RunLevel Highest` (sync only touches your own files → no admin needed).
-- **State-aware right-click menu toggle** (shows ON/OFF and flips its action).
-- **robocopy `/R:5 /W:5`** (was `/R:1 /W:1`) so briefly-locked files are caught within the same cycle.
-- **Removed the vestigial `TargetRelativePath`** field from saved pairs (was always `null`).
+### Infrastructure
+- **Scheduled task self-registration** via `schtasks.exe` (not PowerShell Register-ScheduledTask, which fails with Access Denied on some systems). Task name `LRGEX-FolderSync-Rust` to avoid conflicts with old PS task.
+- **First-run setup** — pick home folder, app copies itself there, creates `.lrgex-home` marker, relaunches.
+- **Config backward-compatible** — reads PowerShell's PascalCase JSON format (`Junctions`, `SourcePath`, etc.) with BOM stripping.
+- **Right-click context menu** — proper registry structure with display name, icon, and command.
+- **Log per-installation** — sync.log lives in the home folder, not shared with PowerShell version's LOCALAPPDATA log.
+- **Local timezone** — all timestamps use the system's local timezone (chrono crate).
 
-## v0.5.0 — Cloud-Agnostic Mirror Engine
-- **Fully cloud-agnostic**: pick ANY folder as the sync home — OneDrive, Google Drive, Mega, Dropbox, iCloud, or even a plain local folder. Cloud is *recommended* (survives a format), never *required*.
-- **Marker-based home** (`.lrgex-home`); all paths resolve relative to the script's own folder. Nothing hardcoded to OneDrive / Documents / a fixed folder name.
-- **Copy-only everywhere** (no `/MIR`, no `/PURGE`) — nothing is ever deleted on either side; deleting a file locally keeps it in the backup (archive behavior).
-- First run asks where to set up; picking a non-cloud folder shows a warning but proceeds.
+### Versioning Details
+- Snapshot folder structure: `_versions/<folder_name>/<YYYYMMDD_HHMMSS>/` (hidden + system attribute).
+- Deleted files: hardlinked to snapshot (survives /MIR purge).
+- Modified files: old version copied to snapshot (survives /MIR overwrite).
+- Unchanged files: hardlinked to snapshot (near-zero space).
+- `_versions/` excluded from robocopy via `/XD` to prevent purging.
+- One-time migration: old `_trash/` auto-renamed to `_versions/`.
+
+---
+
+## v0.7.0 (PowerShell — superseded by v1.0.0)
+- Default sync interval = 120 min (2 hours).
+- Decoupled right-click from the sync task.
+- Self-healing sync task.
+- Synced-folders list in the main UI.
+- Absence-driven auto-restore.
+- Exclude feature (Manage Exclusions).
+- VBS launcher for invisible background sync.
+- Custom LRGEX icon in right-click context menu.
+
+## v0.6.x — v0.5.0 (PowerShell — archived)
+See git history for details. These versions used Windows Forms + PowerShell + copy-only (/E) sync without versioning.

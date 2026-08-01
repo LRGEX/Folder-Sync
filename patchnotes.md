@@ -4,8 +4,6 @@
 - Preview button: browse snapshot in WinRAR/7-Zip (or extract to temp + Explorer)
 - "Backup Folder" renamed to "Backup Now"
 - "Uninstall" renamed to "Unlink from Windows..."
-- Max versions: keep last N instead of 90-day retention (configurable via Tools)
-- Background thread for compression + interval change (no UI freeze)
 - Removed unused code (parse_timestamp, SystemTime imports)
 
 ## v1.2.10

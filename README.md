@@ -1,48 +1,64 @@
 <div align="center">
-  <img src="assets/logo.png" alt="LRGEX Logo" width="240">
 
-  # Folder Sync
+<img src="assets/logo.png" alt="LRGEX Logo" width="220">
 
-  **Version 1.2.12**
+# Folder Sync
 
-  **Your files survive a PC format. Automatically.**
+**Automatic folder backup, versioning, and restore after a Windows reinstall.**
+
+**Portable • Open Source • MIT Licensed**
 
 </div>
 
----
-<img width="676" height="912" alt="image" src="https://github.com/user-attachments/assets/2f9b086f-dc8e-4b40-b8a7-ac8943853196" />
+<table align="center">
+<tr>
+<td align="center">
+<img src="https://github.com/user-attachments/assets/2f9b086f-dc8e-4b40-b8a7-ac8943853196" width="300">
+</td>
+<td width="20"></td>
+<td align="center">
+<img src="https://github.com/user-attachments/assets/67b2ae26-f8ca-48c2-849a-9018274201db" width="300">
+</td>
+</tr>
+</table>
 
-<img width="681" height="914" alt="image" src="https://github.com/user-attachments/assets/67b2ae26-f8ca-48c2-849a-9018274201db" />
+---
 
 ## Ever formatted your PC?
 
-You know the feeling. Windows is fresh. Apps are reinstalled. Then you open your game — **saves gone**. Your configs — **gone**. Hours of progress, years of settings, all wiped because Windows doesn't protect those folders.
+You know the feeling.
 
-**Folder Sync ends this cycle.**
+Windows is fresh. Your apps are reinstalled. Then you launch your favorite game...
+
+**Your saves are gone.**
+
+Your application settings? **Gone.**
+
+Hours of progress and years of customization disappear because Windows doesn't protect those folders.
+
+**Folder Sync remembers them, keeps them synchronized, and restores them to their exact original locations after you reinstall Windows.**
 
 ---
 
 ## How it works
 
-1. **Pick a folder** — game saves, app data, any folder you care about
-2. **It syncs automatically** — every change is mirrored to your cloud storage
-3. **Format your PC** — reinstall Windows without fear
-4. **Folder Sync restores everything** — back to the exact original path, automatically
+1. **Choose a folder** — game saves, app settings, projects, or anything important.
+2. **Folder Sync watches it** — changes are compressed and synchronized automatically.
+3. **Reinstall Windows** — without worrying about lost files.
+4. **Restore with one click** — every folder returns to its original location automatically.
 
-You set it once. You forget it exists. When you need it, your files are there.
+**Set it once. Forget about it. Your files are always there when you need them.**
 
 ---
 
-
-
 ## Why Folder Sync?
 
-- **Right-click any folder** in File Explorer — select "Sync folder (LRGEX)" — done. One click.
-- **Works with any cloud** — OneDrive, Google Drive, Mega, Dropbox, iCloud. Your choice.
-- **Versioning** — every change is saved as a snapshot. Delete a file by mistake? Roll back the entire folder to any point in the last 90 days.
-- **Auto-restore** — after a format, missing folders come back automatically on the next sync cycle.
-- **Health lamp** — green means safe. Red means attention needed.
-- **Single 14MB exe** — no installer, no dependencies, no bloat.
+- **One-click protection** — right-click any folder and choose **"Sync folder (LRGEX)"**.
+- **Works with any cloud** — OneDrive, Google Drive, Dropbox, Mega, iCloud, NAS, Syncthing, or even a local drive.
+- **Automatic synchronization** — changes are backed up in the background.
+- **Built-in version history** — restore previous snapshots whenever you need them.
+- **Automatic restore** — after reinstalling Windows, missing folders are restored to their original paths.
+- **Portable** — a single 14 MB executable. No installer. No dependencies.
 
 ---
 

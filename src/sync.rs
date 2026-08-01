@@ -2,7 +2,6 @@ use crate::config;
 use std::os::windows::process::CommandExt;
 use std::path::Path;
 use std::process::Command;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 pub fn is_dir_empty(path: &str) -> bool {
     match std::fs::read_dir(path) {
@@ -64,7 +63,7 @@ fn add_to_tar<W: std::io::Write>(
 }
 
 /// Decompress a .tar.zst file to a destination directory
-fn decompress_archive(archive: &Path, dest: &Path) -> bool {
+pub fn decompress_archive(archive: &Path, dest: &Path) -> bool {
     let _ = std::fs::create_dir_all(dest);
     let file = match std::fs::File::open(archive) {
         Ok(f) => f,
@@ -127,25 +126,6 @@ fn compact_timestamp() -> String {
     Local::now().format("%Y%m%d_%H%M%S").to_string()
 }
 
-fn parse_timestamp(name: &str) -> Option<u64> {
-    if name.len() != 15 { return None; }
-    let y: i64 = name[0..4].parse().ok()?;
-    let mo: u32 = name[4..6].parse().ok()?;
-    let d: u32 = name[6..8].parse().ok()?;
-    let h: u32 = name[9..11].parse().ok()?;
-    let mi: u32 = name[11..13].parse().ok()?;
-    let s: u32 = name[13..15].parse().ok()?;
-    let mut total_days: i64 = 0;
-    for yr in 1970..y {
-        total_days += if (yr%4==0 && yr%100!=0) || yr%400==0 {366} else {365};
-    }
-    let months = [31, if (y%4==0&&y%100!=0)||y%400==0 {29} else {28}, 31,30,31,30,31,31,30,31,30,31];
-    for m in 0..(mo.saturating_sub(1) as usize) {
-        total_days += months[m];
-    }
-    total_days += (d as i64) - 1;
-    Some((total_days as u64) * 86400 + (h as u64) * 3600 + (mi as u64) * 60 + s as u64)
-}
 
 // ==================== VERSIONING ====================
 
@@ -163,26 +143,23 @@ fn create_snapshot(backup_7z: &Path, versions_folder: &Path) {
 }
 
 /// Delete old versioning snapshots
-fn clean_versions(versions_folder: &Path, retention_days: i32) {
-    let now_secs = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs()).unwrap_or(0);
-    let cutoff = now_secs.saturating_sub((retention_days as u64) * 86400);
+/// Keep only the N newest snapshots, delete the rest
+fn clean_versions(versions_folder: &Path, max_versions: usize) {
     if let Ok(entries) = std::fs::read_dir(versions_folder) {
-        for entry in entries.flatten() {
-            let name = entry.file_name().to_string_lossy().to_string();
-            if let Some(ts) = parse_timestamp(&name) {
-                if ts < cutoff {
-                    let _ = std::fs::remove_dir_all(entry.path());
-                }
-            }
+        let mut snapshots: Vec<_> = entries
+            .flatten()
+            .filter(|e| e.file_name().to_string_lossy().len() == 15)
+            .collect();
+        snapshots.sort_by(|a, b| b.file_name().cmp(&a.file_name()));
+        for entry in snapshots.iter().skip(max_versions) {
+            let _ = std::fs::remove_dir_all(entry.path());
         }
     }
 }
 
 // ==================== SYNC ENGINE ====================
 
-pub fn sync_pair_to_cloud(source: &str, excluded: &[String], retention_days: i32, force: bool) -> (bool, String) {
+pub fn sync_pair_to_cloud(source: &str, excluded: &[String], max_versions: i32, force: bool) -> (bool, String) {
     if source.is_empty() || !Path::new(source).exists() {
         return (false, "source does not exist".into());
     }
@@ -222,7 +199,7 @@ pub fn sync_pair_to_cloud(source: &str, excluded: &[String], retention_days: i32
         if backup_7z.exists() {
             create_snapshot(&backup_7z, &versions_folder);
         }
-        clean_versions(&versions_folder, retention_days);
+        clean_versions(&versions_folder, max_versions as usize);
 
         // Compress source to temp, then move (atomic-ish)
         let temp_7z = backup_dir.join(format!("{}.tar.zst.tmp", leaf));
@@ -316,7 +293,7 @@ pub fn sync_all_pairs() {
             }
         } else {
             crate::synclog::write_progress(&format!("Compressing {}...", leaf));
-            let (success, reason) = sync_pair_to_cloud(&j.source_path, &cfg.excluded_names, cfg.trash_retention_days, false);
+            let (success, reason) = sync_pair_to_cloud(&j.source_path, &cfg.excluded_names, cfg.max_versions, false);
             crate::synclog::write_progress("");
             if success {
                 ok += 1;
@@ -366,6 +343,8 @@ pub fn restore_snapshot(snapshot_dir: &Path, source: &str) -> (bool, String) {
         Err(e) => (false, e.to_string()),
     }
 }
+
+/// List files inside a .tar.zst archive (without extracting)
 
 // ==================== SCHEDULED TASK ====================
 

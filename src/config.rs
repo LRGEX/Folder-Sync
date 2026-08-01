@@ -21,12 +21,12 @@ pub struct Config {
     pub sync_interval_minutes: i32,
     #[serde(default, rename = "ExcludedNames")]
     pub excluded_names: Vec<String>,
-    #[serde(default = "default_trash_retention", rename = "TrashRetentionDays")]
-    pub trash_retention_days: i32,
+    #[serde(default = "default_max_versions", rename = "MaxVersions")]
+    pub max_versions: i32,
 }
 
 fn default_interval() -> i32 { 120 }
-fn default_trash_retention() -> i32 { 90 }
+fn default_max_versions() -> i32 { 5 }
 
 impl Default for Config {
     fn default() -> Self {
@@ -34,7 +34,7 @@ impl Default for Config {
             junctions: vec![],
             sync_interval_minutes: 120,
             excluded_names: vec![],
-            trash_retention_days: 90,
+            max_versions: 5,
         }
     }
 }

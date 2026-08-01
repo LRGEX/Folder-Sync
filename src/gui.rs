@@ -58,10 +58,12 @@ slint::slint! {
         callback export-clicked();
         callback import-clicked();
         callback interval-clicked();
+        callback maxversions-clicked();
         callback exclusions-clicked();
         callback uninstall-clicked();
         callback versions-clicked(int);
         callback restore-version();
+        callback preview-version();
         callback close-versions();
 
         VerticalBox {
@@ -171,7 +173,7 @@ slint::slint! {
             // Action buttons (at the bottom — all equal width)
             HorizontalBox {
                 spacing: 8px;
-                Button { text: "Backup Folder"; horizontal-stretch: 1; min-width: 250px; clicked => { root.link-clicked(); } }
+                Button { text: "Backup Now"; horizontal-stretch: 1; min-width: 250px; clicked => { root.link-clicked(); } }
                 Button { text: "Restore Saved"; horizontal-stretch: 1; min-width: 250px; clicked => { root.restore-clicked(); } }
             }
             HorizontalBox {
@@ -231,12 +233,16 @@ slint::slint! {
                         clicked => { root.interval-clicked(); root.menu-open = false; }
                     }
                     MenuItem {
+                        label: "Set Max Versions...";
+                        clicked => { root.maxversions-clicked(); root.menu-open = false; }
+                    }
+                    MenuItem {
                         label: "Manage Exclusions...";
                         clicked => { root.exclusions-clicked(); root.menu-open = false; }
                     }
                     Rectangle { height: 1px; background: #3a3a3a; }
                     MenuItem {
-                        label: "Uninstall";
+                        label: "Unlink from Windows...";
                         clicked => { root.uninstall-clicked(); root.menu-open = false; }
                     }
                 }
@@ -298,6 +304,13 @@ slint::slint! {
                         alignment: center;
                         Rectangle {
                             width: 100px; height: 30px;
+                            background: pbtn.has-hover ? #3a3a3a : #2d2d2d;
+                            border-radius: 4px;
+                            Text { text: "Preview"; color: #cb803c; horizontal-alignment: center; vertical-alignment: center; font-weight: 700; }
+                            pbtn := TouchArea { clicked => { root.preview-version(); } }
+                        }
+                        Rectangle {
+                            width: 100px; height: 30px;
                             background: rbtn.has-hover ? #d89554 : #cb803c;
                             border-radius: 4px;
                             Text { text: "Restore"; color: white; horizontal-alignment: center; vertical-alignment: center; font-weight: 700; }
@@ -330,7 +343,7 @@ pub fn run() {
                 .unwrap_or_else(|| "an unknown location".to_string());
             rfd::MessageDialog::new()
                 .set_title("Already Installed")
-                .set_description(&format!("Folder Sync is already installed at:\n{}\n\nOpen it from there.\n\nTo move: Tools -> Uninstall first, then run this exe again.", existing))
+                .set_description(&format!("Folder Sync is already installed at:\n{}\n\nOpen it from there.\n\nTo move: Tools -> Unlink from Windows first, then run this exe again.", existing))
                 .set_buttons(rfd::MessageButtons::Ok)
                 .show();
             return;
@@ -404,7 +417,7 @@ pub fn run() {
                     let w2 = w.clone();
                     std::thread::spawn(move || {
                         crate::synclog::write_progress(&format!("Compressing {}...", leaf_name));
-                        let (ok, msg) = sync::sync_pair_to_cloud(&path, &cfg.excluded_names, cfg.trash_retention_days, true);
+                        let (ok, msg) = sync::sync_pair_to_cloud(&path, &cfg.excluded_names, cfg.max_versions, true);
                         crate::synclog::write_progress("");
                         if ok { health::write_status(1, 0, 0, &[]); }
                         w2.upgrade_in_event_loop(move |a| {
@@ -430,7 +443,7 @@ pub fn run() {
                 let w3 = w.clone();
                 std::thread::spawn(move || {
                     crate::synclog::write_progress(&format!("Compressing {}...", leaf));
-                    let (ok, msg) = sync::sync_pair_to_cloud(&path, &c2.excluded_names, c2.trash_retention_days, true);
+                    let (ok, msg) = sync::sync_pair_to_cloud(&path, &c2.excluded_names, c2.max_versions, true);
                     crate::synclog::write_progress("");
                     if ok { health::write_status(1, 0, 0, &[]); }
                     w3.upgrade_in_event_loop(move |a| {
@@ -680,6 +693,37 @@ pub fn run() {
         }
     });
 
+    // --- Set Max Versions ---
+    app.on_maxversions_clicked(|| {
+        let cfg = config::load_config();
+        let cur = cfg.max_versions;
+        if let Some(val) = ps_inputbox(
+            &format!("Current: {} versions kept. Enter new limit (1 or more):", cur),
+            "Max Versions",
+            &cur.to_string(),
+        ) {
+            match val.trim().parse::<i32>() {
+                Ok(n) if n >= 1 => {
+                    let mut c2 = config::load_config();
+                    c2.max_versions = n;
+                    config::save_config(&c2);
+                    rfd::MessageDialog::new()
+                        .set_title("Max Versions")
+                        .set_description(&format!("Will keep the last {} version(s).", n))
+                        .set_buttons(rfd::MessageButtons::Ok)
+                        .show();
+                }
+                _ => {
+                    rfd::MessageDialog::new()
+                        .set_title("Invalid Input")
+                        .set_description("Enter a whole number (1 or more).")
+                        .set_buttons(rfd::MessageButtons::Ok)
+                        .show();
+                }
+            }
+        }
+    });
+
     // --- Manage Exclusions ---
     app.on_exclusions_clicked(|| {
         let cfg = config::load_config();
@@ -802,6 +846,86 @@ pub fn run() {
         });
     }
 
+    // --- Preview version (extract to temp + open Explorer) ---
+    {
+        let w = app.as_weak();
+        let vs = version_state.clone();
+        app.on_preview_version(move || {
+            let a = match w.upgrade() { Some(a) => a, None => return };
+            let idx = a.get_selected_version();
+            if idx < 0 {
+                rfd::MessageDialog::new()
+                    .set_title("Preview")
+                    .set_description("Select a version first.")
+                    .set_buttons(rfd::MessageButtons::Ok)
+                    .show();
+                return;
+            }
+            let (paths, _) = vs.borrow().clone();
+            let i = idx as usize;
+            if i >= paths.len() { return; }
+
+            // Find .tar.zst inside the snapshot directory
+            let mut archive_path = None;
+            if let Ok(entries) = std::fs::read_dir(&paths[i]) {
+                for entry in entries.flatten() {
+                    let p = entry.path();
+                    if p.extension().map(|e| e == "zst").unwrap_or(false) {
+                        archive_path = Some(p);
+                        break;
+                    }
+                }
+            }
+
+            match archive_path {
+                Some(path) => {
+                    a.set_status_text("Opening preview...".into());
+                    // Check for WinRAR or 7-Zip to browse in-place
+                    let archiver = [
+                        r"C:\Program Files\WinRAR\WinRAR.exe",
+                        r"C:\Program Files (x86)\WinRAR\WinRAR.exe",
+                        r"C:\Program Files\7-Zip\7zFM.exe",
+                        r"C:\Program Files (x86)\7-Zip\7zFM.exe",
+                    ].iter().map(std::path::PathBuf::from).find(|p| p.exists());
+                    if let Some(app) = &archiver {
+                        let _ = std::process::Command::new(app)
+                            .arg(&path)
+                            .spawn();
+                        a.set_status_text("Opened in archiver.".into());
+                    } else {
+                        // Fallback: extract to temp + open Explorer
+                        a.set_status_text("Extracting preview...".into());
+                        let w2 = w.clone();
+                        std::thread::spawn(move || {
+                            let preview_dir = std::env::temp_dir().join("lrgex-preview");
+                            let _ = std::fs::remove_dir_all(&preview_dir);
+                            let _ = std::fs::create_dir_all(&preview_dir);
+                            if sync::decompress_archive(&path, &preview_dir) {
+                                let _ = std::process::Command::new("explorer.exe")
+                                    .arg(&preview_dir)
+                                    .spawn();
+                                w2.upgrade_in_event_loop(|a| {
+                                    a.set_status_text("Preview opened in Explorer.".into());
+                                }).ok();
+                            } else {
+                                w2.upgrade_in_event_loop(|a| {
+                                    a.set_status_text("Preview failed.".into());
+                                }).ok();
+                            }
+                        });
+                    }
+                }
+                None => {
+                    rfd::MessageDialog::new()
+                        .set_title("Preview")
+                        .set_description("No archive found in this snapshot.")
+                        .set_buttons(rfd::MessageButtons::Ok)
+                        .show();
+                }
+            }
+        });
+    }
+
     // --- Close versions panel ---
     {
         let w = app.as_weak();
@@ -863,11 +987,11 @@ pub fn run() {
         crate::update::check_for_updates();
     });
 
-    // --- Uninstall ---
+    // --- Unlink from Windows ---
     app.on_uninstall_clicked(|| {
         let input = ps_inputbox(
-            "Type 'yes' to uninstall.\n\nThis removes the scheduled task, right-click menu, and home marker.\nYour backup files will NOT be deleted.",
-            "Uninstall",
+            "Type 'yes' to unlink.\n\nThis removes the scheduled task, right-click menu, and home marker.\nYour backup files will NOT be deleted.",
+            "Unlink from Windows",
             ""
         );
         let has_input = input.is_some();
@@ -877,7 +1001,7 @@ pub fn run() {
         if !confirmed {
             if has_input {
                 rfd::MessageDialog::new()
-                    .set_title("Uninstall")
+                    .set_title("Unlink from Windows")
                     .set_description("Cancelled.")
                     .set_buttons(rfd::MessageButtons::Ok)
                     .show();
@@ -896,7 +1020,7 @@ pub fn run() {
 
         // Show goodbye
         rfd::MessageDialog::new()
-            .set_title("Uninstalled")
+            .set_title("Unlinked")
             .set_description("Cleanup will finish in a moment.\n\nYou can now safely delete this folder.")
             .set_buttons(rfd::MessageButtons::Ok)
             .show();

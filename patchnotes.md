@@ -1,5 +1,17 @@
 # Patch Notes — LRGEX Folder Sync
 
+## v1.2.11
+- Preview button: browse snapshot in WinRAR/7-Zip (or extract to temp + Explorer)
+- "Backup Folder" renamed to "Backup Now"
+- "Uninstall" renamed to "Unlink from Windows..."
+- Max versions: keep last N instead of 90-day retention (configurable via Tools)
+- Background thread for compression + interval change (no UI freeze)
+- Removed unused code (parse_timestamp, SystemTime imports)
+
+## v1.2.10
+- Version limit: keep last N snapshots instead of 90-day retention (default 5)
+- Tools menu: Set Max Versions... (user-configurable)
+
 ## v1.2.9
 - Backup Folder compression runs on background thread (UI stays alive, live progress)
 - Set Sync Interval no longer hangs (schtasks on background thread)

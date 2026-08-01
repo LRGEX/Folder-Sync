@@ -29,6 +29,10 @@ You know the feeling. Windows is fresh. Apps are reinstalled. Then you open your
 You set it once. You forget it exists. When you need it, your files are there.
 
 ---
+<img width="676" height="912" alt="image" src="https://github.com/user-attachments/assets/2f9b086f-dc8e-4b40-b8a7-ac8943853196" />
+
+<img width="681" height="914" alt="image" src="https://github.com/user-attachments/assets/67b2ae26-f8ca-48c2-849a-9018274201db" />
+
 
 ## Why Folder Sync?
 

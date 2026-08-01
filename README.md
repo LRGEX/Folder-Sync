@@ -4,6 +4,8 @@
 
 # Folder Sync
 
+**Version 1.2.19**
+
 **Automatic folder backup, versioning, and restore after a Windows reinstall.**
 
 **Portable • Open Source • MIT Licensed**

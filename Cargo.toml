@@ -1,6 +1,6 @@
 [package]
 name = "folder_sync"
-version = "1.2.12"
+version = "1.2.19"
 edition = "2021"
 
 [[bin]]
@@ -12,6 +12,7 @@ slint = "1.10"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 winreg = "0.55"
+windows-sys = { version = "0.59", features = ["Win32_System_Threading", "Win32_Foundation"] }
 chrono = "0.4"
 rfd = "0.15"
 ureq = { version = "2", features = ["json"] }
@@ -19,8 +20,9 @@ tar = "0.4"
 zstd = "0.13"
 
 [profile.release]
-lto = true
-codegen-units = 1
+opt-level = 3
+lto = false
+codegen-units = 16
 strip = true
 
 [build-dependencies]

@@ -1,3 +1,4 @@
+#![allow(unused_imports)]
 use std::os::windows::process::CommandExt;
 slint::slint! {
     import { Button, LineEdit, VerticalBox, HorizontalBox, ScrollView } from "std-widgets.slint";
@@ -5,6 +6,7 @@ slint::slint! {
     export struct FolderEntry {
         path: string,
         auto_restore: string,
+        is_game: bool,
     }
 
     export struct VersionEntry {
@@ -31,6 +33,10 @@ slint::slint! {
         icon: @image-url("../assets/app-icon.png");
         preferred-width: 560px;
         preferred-height: 700px;
+        min-width: 560px;
+        max-width: 560px;
+        min-height: 700px;
+        max-height: 700px;
         background: #1e1e1e;
 
         in-out property <string> health-text: " Checking...";
@@ -46,6 +52,18 @@ slint::slint! {
         in-out property <int> selected-version: -1;
         in-out property <string> app-version: "";
         in-out property <string> versions-title: "Versions";
+        in-out property <bool> input-visible: false;
+        in-out property <bool> restore-visible: false;
+        in-out property <bool> about-visible: false;
+        in-out property <string> restore-msg: "";
+        in-out property <bool> restore-done: false;
+        in-out property <bool> operation-running: false;
+        in-out property <bool> restore-failed: false;
+        callback restore-ok();
+        in-out property <string> input-title: "";
+        in-out property <string> input-prompt: "";
+        in-out property <string> input-value: "";
+        in-out property <int> input-mode: 0;  // 0=interval, 1=maxversions, 2=exclusions, 3=unlink
 
         callback browse-clicked();
         callback link-clicked();
@@ -65,9 +83,11 @@ slint::slint! {
         callback restore-version();
         callback preview-version();
         callback close-versions();
+        callback input-ok();
+        callback input-cancel();
 
         VerticalBox {
-            spacing: 8px;
+            spacing: 12px;
 
             // Tools menu bar
             HorizontalLayout {
@@ -85,6 +105,21 @@ slint::slint! {
                         font-weight: 700;
                     }
                     TouchArea { clicked => { root.menu-open = !root.menu-open; } }
+                }
+                // About button
+                Rectangle {
+                    width: 60px;
+                    height: 30px;
+                    background: about-ta.has-hover ? #2d2d2d : transparent;
+                    border-radius: 4px;
+                    Text {
+                        text: "About";
+                        color: about-ta.has-hover ? #cb803c : #f0f0f0;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                        font-weight: 700;
+                    }
+                    about-ta := TouchArea { clicked => { root.about-visible = true; } }
                 }
             }
 
@@ -127,8 +162,20 @@ slint::slint! {
 
             // Backed up folders list (right under source input, shows full paths)
             Text { text: "Backed up folders:"; color: #aaa; font-size: 12px; }
+
+            // Column headers
+            HorizontalLayout {
+                height: 18px;
+                spacing: 0px;
+                Text { text: "Path"; color: #777; font-size: 9px; vertical-alignment: center; horizontal-stretch: 1; }
+                Text { text: "Game"; color: #777; font-size: 9px; vertical-alignment: center; horizontal-alignment: center; width: 34px; }
+                Text { text: "Auto"; color: #777; font-size: 9px; vertical-alignment: center; horizontal-alignment: center; width: 30px; }
+                Text { text: "Versions"; color: #777; font-size: 9px; vertical-alignment: center; horizontal-alignment: center; width: 68px; }
+            }
+
             ScrollView {
-                height: 200px;
+                vertical-stretch: 1;
+                min-height: 200px;
                 VerticalBox {
                     for entry[i] in root.folders : Rectangle {
                         height: 28px;
@@ -140,7 +187,7 @@ slint::slint! {
                             height: parent.height;
                             background: i == root.selected-index ? #cb803c : transparent;
                         }
-                        TouchArea { clicked => { root.selected-index = i; root.source-text = entry.path; } }
+                        TouchArea { clicked => { root.selected-index = root.selected-index == i ? -1 : i; root.source-text = root.selected-index == i ? entry.path : ""; } }
                         HorizontalLayout {
                             Text {
                                 text: entry.path;
@@ -148,6 +195,18 @@ slint::slint! {
                                 vertical-alignment: center;
                                 horizontal-stretch: 1;
                                 overflow: elide;
+                            }
+                            // Game lamp: green if game saves detected, dark otherwise
+                            Rectangle {
+                                width: 34px;
+                                height: parent.height;
+                                Rectangle {
+                                    x: (parent.width - self.width) / 2;
+                                    y: (parent.height - self.height) / 2;
+                                    width: 10px; height: 10px;
+                                    border-radius: 5px;
+                                    background: entry.is_game ? #4caf50 : #444;
+                                }
                             }
                             Text {
                                 text: entry.auto_restore;
@@ -172,14 +231,60 @@ slint::slint! {
 
             // Action buttons (at the bottom — all equal width)
             HorizontalBox {
-                spacing: 8px;
-                Button { text: "Backup Now"; horizontal-stretch: 1; min-width: 250px; clicked => { root.link-clicked(); } }
-                Button { text: "Restore Saved"; horizontal-stretch: 1; min-width: 250px; clicked => { root.restore-clicked(); } }
+                spacing: 12px;
+                Rectangle {
+                    horizontal-stretch: 1; min-width: 250px; height: 32px;
+                    background: bk-hover.has-hover ? #3a3a3a : #2d2d2d;
+                    border-radius: 4px;
+                    Text { text: "Backup Folder"; color: #cb803c; horizontal-alignment: center; vertical-alignment: center; font-weight: 700; }
+                    bk-hover := TouchArea { clicked => { root.link-clicked(); } }
+                    // Tooltip on hover
+                    if bk-hover.has-hover : Rectangle {
+                        y: -28px; x: 0px; width: 220px; height: 22px;
+                        background: #111;
+                        border-radius: 3px; border-width: 1px; border-color: #555;
+                        Text { text: "Compress and store the selected folder"; color: #ccc; font-size: 10px; horizontal-alignment: center; vertical-alignment: center; }
+                    }
+                }
+                Rectangle {
+                    horizontal-stretch: 1; min-width: 250px; height: 32px;
+                    background: rs-hover.has-hover ? #3a3a3a : #2d2d2d;
+                    border-radius: 4px;
+                    Text { text: "Restore Folder"; color: #cb803c; horizontal-alignment: center; vertical-alignment: center; font-weight: 700; }
+                    rs-hover := TouchArea { clicked => { root.restore-clicked(); } }
+                    if rs-hover.has-hover : Rectangle {
+                        y: -28px; x: 0px; width: 220px; height: 22px;
+                        background: #111; border-radius: 3px; border-width: 1px; border-color: #555;
+                        Text { text: "Decompress backup back to original location"; color: #ccc; font-size: 10px; horizontal-alignment: center; vertical-alignment: center; }
+                    }
+                }
             }
             HorizontalBox {
-                spacing: 8px;
-                Button { text: "Toggle Auto-Restore"; horizontal-stretch: 1; min-width: 250px; clicked => { root.toggle-clicked(); } }
-                Button { text: "Remove"; horizontal-stretch: 1; min-width: 250px; clicked => { root.remove-clicked(); } }
+                spacing: 12px;
+                Rectangle {
+                    horizontal-stretch: 1; min-width: 250px; height: 32px;
+                    background: tg-hover.has-hover ? #3a3a3a : #2d2d2d;
+                    border-radius: 4px;
+                    Text { text: "Toggle Auto-Restore"; color: #f0f0f0; horizontal-alignment: center; vertical-alignment: center; }
+                    tg-hover := TouchArea { clicked => { root.toggle-clicked(); } }
+                    if tg-hover.has-hover : Rectangle {
+                        y: -28px; x: 0px; width: 240px; height: 22px;
+                        background: #111; border-radius: 3px; border-width: 1px; border-color: #555;
+                        Text { text: "Enable/disable automatic restore after format"; color: #ccc; font-size: 10px; horizontal-alignment: center; vertical-alignment: center; }
+                    }
+                }
+                Rectangle {
+                    horizontal-stretch: 1; min-width: 250px; height: 32px;
+                    background: rm-hover.has-hover ? #3a3a3a : #2d2d2d;
+                    border-radius: 4px;
+                    Text { text: "Remove"; color: #f0f0f0; horizontal-alignment: center; vertical-alignment: center; }
+                    rm-hover := TouchArea { clicked => { root.remove-clicked(); } }
+                    if rm-hover.has-hover : Rectangle {
+                        y: -28px; x: 0px; width: 200px; height: 22px;
+                        background: #111; border-radius: 3px; border-width: 1px; border-color: #555;
+                        Text { text: "Remove folder from sync list (not deleted)"; color: #ccc; font-size: 10px; horizontal-alignment: center; vertical-alignment: center; }
+                    }
+                }
             }
 
             Text { text: root.status-text; color: #cb803c; font-size: 12px; height: 28px; }
@@ -269,7 +374,7 @@ slint::slint! {
 
                 VerticalLayout {
                     padding: 16px;
-                    spacing: 8px;
+                    spacing: 12px;
 
                     Text {
                         text: root.versions-title;
@@ -300,7 +405,7 @@ slint::slint! {
                     }
 
                     HorizontalLayout {
-                        spacing: 8px;
+                        spacing: 12px;
                         alignment: center;
                         Rectangle {
                             width: 100px; height: 30px;
@@ -327,13 +432,215 @@ slint::slint! {
                 }
             }
         }
+
+        // Input dialog overlay
+        if root.input-visible : Rectangle {
+            x: 0px; y: 0px;
+            width: root.width; height: root.height;
+            background: rgba(0, 0, 0, 0.75);
+            TouchArea { clicked => { } }
+
+            Rectangle {
+                x: (root.width - self.width) / 2;
+                y: (root.height - self.height) / 2;
+                width: 380px;
+                height: 180px;
+                background: #1e1e1e;
+                border-radius: 8px;
+                border-width: 1px;
+                border-color: #3a3a3a;
+
+                VerticalLayout {
+                    padding: 16px;
+                    spacing: 12px;
+
+                    Text {
+                        text: root.input-title;
+                        font-size: 16px;
+                        font-weight: 800;
+                        color: #b3b3b3;
+                    }
+                    Text {
+                        text: root.input-prompt;
+                        font-size: 12px;
+                        color: #aaa;
+                        wrap: word-wrap;
+                    }
+                    LineEdit {
+                        text <=> root.input-value;
+                        placeholder-text: "Enter value...";
+                    }
+
+                    HorizontalLayout {
+                        spacing: 12px;
+                        alignment: end;
+                        Rectangle {
+                            width: 80px; height: 30px;
+                            background: okbtn.has-hover ? #d89554 : #cb803c;
+                            border-radius: 4px;
+                            Text { text: "OK"; color: white; horizontal-alignment: center; vertical-alignment: center; font-weight: 700; }
+                            okbtn := TouchArea { clicked => { root.input-ok(); } }
+                        }
+                        Rectangle {
+                            width: 80px; height: 30px;
+                            background: cnclbtn.has-hover ? #3a3a3a : #2d2d2d;
+                            border-radius: 4px;
+                            Text { text: "Cancel"; color: #f0f0f0; horizontal-alignment: center; vertical-alignment: center; }
+                            cnclbtn := TouchArea { clicked => { root.input-cancel(); } }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Restore overlay — impossible to miss
+        if root.restore-visible : Rectangle {
+            x: 0px; y: 0px;
+            width: root.width; height: root.height;
+            background: rgba(0, 0, 0, 0.85);
+            TouchArea { clicked => { } }
+
+            Rectangle {
+                x: (root.width - self.width) / 2;
+                y: (root.height - self.height) / 2;
+                width: 460px;
+                height: 280px;
+                background: #1e1e1e;
+                border-radius: 8px;
+                border-width: 1px;
+                border-color: #cb803c;
+
+                VerticalLayout {
+                    padding: 24px;
+                    spacing: 12px;
+
+                    Text {
+                        text: root.restore-done ? (root.restore-failed ? "Restore Failed" : "Restore Complete") : "Restoring...";
+                        font-size: 18px;
+                        font-weight: 800;
+                        color: root.restore-done ? (root.restore-failed ? #f44336 : #4caf50) : #cb803c;
+                        horizontal-alignment: center;
+                        horizontal-stretch: 1;
+                    }
+                    Text {
+                        text: root.restore-msg;
+                        font-size: 12px;
+                        color: #f0f0f0;
+                        horizontal-alignment: center;
+                        horizontal-stretch: 1;
+                        wrap: word-wrap;
+                    }
+                    if root.restore-done : HorizontalLayout {
+                        alignment: center;
+                        Rectangle {
+                            width: 80px; height: 28px;
+                            background: rokbtn.has-hover ? #d89554 : #cb803c;
+                            border-radius: 4px;
+                            Text { text: "OK"; color: white; horizontal-alignment: center; vertical-alignment: center; font-weight: 700; }
+                            rokbtn := TouchArea { clicked => { root.restore-ok(); } }
+                        }
+                    }
+                }
+            }
+
+        }
+
+        // About overlay — sibling of restore overlay (not nested inside)
+        if root.about-visible : Rectangle {
+            x: 0px; y: 0px;
+            width: root.width; height: root.height;
+            background: rgba(0, 0, 0, 0.85);
+            TouchArea { clicked => { } }
+
+            Rectangle {
+                x: (root.width - self.width) / 2;
+                y: (root.height - self.height) / 2;
+                width: 360px;
+                height: 380px;
+                background: #1e1e1e;
+                border-radius: 8px;
+                border-width: 1px;
+                border-color: #cb803c;
+
+                VerticalLayout {
+                    alignment: center;
+                    spacing: 14px;
+
+                    HorizontalLayout {
+                        alignment: center;
+                        Image {
+                            source: @image-url("../assets/logo.png");
+                            width: 200px; height: 48px;
+                            image-fit: contain;
+                        }
+                    }
+
+                    Text {
+                        text: "LRGEX Folder Sync";
+                        font-size: 20px; font-weight: 900; color: #b3b3b3;
+                        horizontal-alignment: center;
+                    }
+
+                    Text {
+                        text: "v" + root.app-version;
+                        font-size: 12px; color: #888;
+                        horizontal-alignment: center;
+                    }
+
+                    Text {
+                        text: "Cloud-agnostic folder backup\nwith snapshot versioning\nand auto-restore.";
+                        font-size: 11px; color: #aaa;
+                        horizontal-alignment: center;
+                    }
+
+                    Rectangle { height: 1px; background: #333; }
+
+                    Text {
+                        text: "\u{a9} LRGEX. All rights reserved.";
+                        font-size: 10px; color: #666;
+                        horizontal-alignment: center;
+                    }
+
+                    HorizontalLayout {
+                        alignment: center;
+                        Rectangle {
+                            width: 80px; height: 28px;
+                            background: aboutok.has-hover ? #d89554 : #cb803c;
+                            border-radius: 4px;
+                            Text { text: "OK"; color: white; horizontal-alignment: center; vertical-alignment: center; font-weight: 700; }
+                            aboutok := TouchArea { clicked => { root.about-visible = false; } }
+                        }
+                    }
+                }
+            }
+        }
     }
 }
-
 use slint::VecModel;
 use crate::{config, sync, health, synclog};
 
 pub fn run() {
+    // Startup sweep: clean up orphaned temp files from killed compressions.
+    // Safe — PID suffix identifies dead processes. Prevents temp pile-up.
+    if let Ok(entries) = std::fs::read_dir(std::env::temp_dir()) {
+        let current_pid = std::process::id();
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().to_string();
+            if name.starts_with("lrgex_") && name.ends_with(".tar.zst.tmp") {
+                // Parse PID from filename: lrgex_<PID>_<leaf>.tar.zst.tmp
+                if let Some(pid_str) = name.strip_prefix("lrgex_") {
+                    if let Some(pid_end) = pid_str.find('_') {
+                        if let Ok(pid) = pid_str[..pid_end].parse::<u32>() {
+                            if pid != current_pid && !crate::synclog::is_pid_alive(pid) {
+                                let _ = std::fs::remove_file(entry.path());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     // First-run: relocate to home folder if needed
     if !config::is_home() {
         // Check if already installed elsewhere
@@ -390,12 +697,54 @@ pub fn run() {
     update_rc_label(&app);
 
     // --- Browse ---
+    // Runs on background thread to avoid rfd dialogs appearing behind Slint window
     {
         let w = app.as_weak();
         app.on_browse_clicked(move || {
-            if let Some(folder) = rfd::FileDialog::new().pick_folder() {
+            let a = match w.upgrade() { Some(a) => a, None => return };
+            let current = a.get_source_text().to_string();
+            let mut dialog = rfd::FileDialog::new();
+            if !current.is_empty() && std::path::Path::new(&current).exists() {
+                dialog = dialog.set_directory(&current);
+            }
+            // Folder picker must run on UI thread (Win32 requirement)
+            if let Some(folder) = dialog.pick_folder() {
                 let p = folder.to_string_lossy().to_string();
-                w.upgrade_in_event_loop(move |a| a.set_source_text(p.into())).ok();
+                let w = w.clone();
+                // MessageDialog + config update on background thread (appears on top)
+                std::thread::spawn(move || {
+                    let mut cfg = config::load_config();
+                    if !cfg.junctions.iter().any(|j| j.source_path == p) {
+                        let leaf = std::path::Path::new(&p).file_name()
+                            .map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+                        let ar = rfd::MessageDialog::new()
+                            .set_title("Add Folder")
+                            .set_description(&format!("Add '{}' to sync list?\n\nEnable auto-restore?", leaf))
+                            .set_buttons(rfd::MessageButtons::YesNo)
+                            .show() == rfd::MessageDialogResult::Yes;
+                        cfg.junctions.push(config::Junction {
+                            source_path: p.clone(), auto_restore: ar, created: synclog::timestamp(), is_game: false,
+                        });
+                        config::save_config(&cfg);
+
+                        // Immediately backup the newly added folder — don't wait for interval
+                        crate::synclog::write_progress(&format!("Compressing {}...", leaf));
+                        let (ok, msg) = crate::sync::sync_pair_to_cloud(&p, &cfg.excluded_names, cfg.max_versions, true);
+                        crate::synclog::write_progress("");
+                        if ok { crate::health::write_status(1, 0, 0, &[]); }
+                        w.upgrade_in_event_loop(move |a| {
+                            a.set_source_text(p.into());
+                            a.set_status_text(msg.into());
+                            refresh_folders(&a);
+                        }).ok();
+                    } else {
+                        // Already in config — just update UI
+                        w.upgrade_in_event_loop(move |a| {
+                            a.set_source_text(p.into());
+                            refresh_folders(&a);
+                        }).ok();
+                    }
+                });
             }
         });
     }
@@ -414,6 +763,7 @@ pub fn run() {
                 if cfg.junctions.iter().any(|j| j.source_path == path) {
                     let leaf_name = std::path::Path::new(&path).file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
                     a.set_status_text(format!("Compressing {}...", leaf_name).into());
+                    a.set_operation_running(true);
                     let w2 = w.clone();
                     std::thread::spawn(move || {
                         crate::synclog::write_progress(&format!("Compressing {}...", leaf_name));
@@ -421,7 +771,7 @@ pub fn run() {
                         crate::synclog::write_progress("");
                         if ok { health::write_status(1, 0, 0, &[]); }
                         w2.upgrade_in_event_loop(move |a| {
-                            a.set_status_text(if ok { "Done.".into() } else { msg.into() });
+                            a.set_operation_running(false); a.set_status_text(msg.into());
                         }).ok();
                     });
                     return;
@@ -436,9 +786,10 @@ pub fn run() {
                 let mut c2 = config::load_config();
                 c2.junctions.retain(|j| j.source_path != path);
                 c2.junctions.push(config::Junction {
-                    source_path: path.clone(), auto_restore: ar, created: synclog::timestamp(),
+                    source_path: path.clone(), auto_restore: ar, created: synclog::timestamp(), is_game: false,
                 });
                 config::save_config(&c2);
+                a.set_operation_running(true);
                 a.set_status_text(format!("Compressing {}...", leaf).into());
                 let w3 = w.clone();
                 std::thread::spawn(move || {
@@ -448,7 +799,8 @@ pub fn run() {
                     if ok { health::write_status(1, 0, 0, &[]); }
                     w3.upgrade_in_event_loop(move |a| {
                         refresh_folders(&a);
-                        a.set_status_text(if ok { "Done.".into() } else { msg.into() });
+                        a.set_operation_running(false);
+                        a.set_status_text(msg.into());
                     }).ok();
                 });
         });
@@ -460,24 +812,78 @@ pub fn run() {
         app.on_restore_clicked(move || {
             let count_cfg = config::load_config();
             if count_cfg.junctions.is_empty() { return; }
-            let confirm = rfd::MessageDialog::new()
-                .set_title("Confirm Restore")
-                .set_description(&format!("Restore {} folder(s) from backup?\nThis will overwrite current files.", count_cfg.junctions.len()))
-                .set_buttons(rfd::MessageButtons::YesNo)
-                .show() == rfd::MessageDialogResult::Yes;
-            if !confirm { return; }
-            let mut count = 0;
-            for j in &config::load_config().junctions {
-                let (ok, _) = sync::restore_pair_from_cloud(&j.source_path);
-                if ok { count += 1; }
+
+            let a = match w.upgrade() { Some(a) => a, None => return };
+
+            // If a folder is selected, restore ONLY that one. Otherwise restore all.
+            let selected = a.get_selected_index();
+            let to_restore: Vec<String> = if selected >= 0 && (selected as usize) < count_cfg.junctions.len() {
+                vec![count_cfg.junctions[selected as usize].source_path.clone()]
+            } else {
+                // No folder selected — confirm before restoring ALL
+                let count = count_cfg.junctions.len();
+                let confirm = rfd::MessageDialog::new()
+                    .set_title("Restore All")
+                    .set_description(&format!("No folder selected.\n\nRestore ALL {} folders?", count))
+                    .set_buttons(rfd::MessageButtons::YesNo)
+                    .show() == rfd::MessageDialogResult::Yes;
+                if !confirm { return; }
+                count_cfg.junctions.iter().map(|j| j.source_path.clone()).collect()
+            };
+
+            // PRE-CHECK: validate ALL folders before touching ANY.
+            // If any fails (permissions, corrupt archive), abort entirely — no partial restores.
+            let failures = crate::sync::pre_check_restore(&to_restore);
+            if !failures.is_empty() {
+                let msg = format!("RESTORE ABORTED \u{2014} {} folder(s) failed pre-check:\n\n{}",
+                    failures.len(),
+                    failures.iter().map(|(name, reason)| format!("  {}: {}", name, reason)).collect::<Vec<_>>().join("\n"));
+                a.set_restore_msg(msg.into());
+                a.set_restore_failed(true);
+                a.set_restore_done(true);
+                a.set_restore_visible(true);
+                return;
             }
-            let msg = format!("Restored {} folder(s).", count);
-            rfd::MessageDialog::new()
-                .set_title("Restore Complete")
-                .set_description(&msg)
-                .set_buttons(rfd::MessageButtons::Ok)
-                .show();
-            w.upgrade_in_event_loop(move |a| a.set_status_text(msg.into())).ok();
+
+            a.set_restore_msg("Preparing...".into());
+            a.set_restore_visible(true);
+            a.set_restore_done(false);
+
+            let junctions = to_restore;
+            let total = junctions.len();
+            let w2 = w.clone();
+            std::thread::spawn(move || {
+                let mut count = 0;
+                let mut failures: Vec<String> = vec![];
+                for (i, source) in junctions.iter().enumerate() {
+                    let leaf = std::path::Path::new(source).file_name()
+                        .map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+                    let prog = format!("{} of {}: {}", i + 1, total, leaf);
+                    w2.upgrade_in_event_loop(move |a| { a.set_restore_msg(prog.into()); }).ok();
+                    let (ok, reason) = sync::restore_pair_from_cloud(source);
+                    if ok { count += 1; }
+                    else { failures.push(format!("{}: {}", leaf, reason)); }
+                }
+                // Any successful restore should set the migration marker —
+                // the health timer (every 30s) will check it and run migration
+                // automatically when the game creates a new ID folder.
+                if count > 0 {
+                    crate::sync::set_migration_pending();
+                }
+                let (msg, failed) = if count == total && failures.is_empty() {
+                    (format!("Restored {} of {} folder(s).", count, total), false)
+                } else if count == 0 {
+                    let reasons = failures.join("\n");
+                    (format!("FAILED — 0 of {} restored.\n\n{}\n\nIf the folder is in Program Files, run the app as Administrator.", total, reasons), true)
+                } else {
+                    (format!("Partial: {} of {} restored.\nFailed: {}", count, total, failures.join(", ")), true)
+                };
+                w2.upgrade_in_event_loop(move |a| {
+                    a.set_restore_msg(msg.into());
+                    a.set_restore_failed(failed);
+                    a.set_restore_done(true);
+                }).ok();
+            });
         });
     }
 
@@ -536,11 +942,39 @@ pub fn run() {
             config::save_config(&cfg);
             a.set_selected_index(-1);
             refresh_folders(&a);
-            rfd::MessageDialog::new()
-                .set_title("Removed")
-                .set_description(&format!("'{}' removed from sync list.", name))
-                .set_buttons(rfd::MessageButtons::Ok)
-                .show();
+
+            // Ask if user wants to also delete the backup files
+            let backup_dir = config::script_dir().join("backup").join(&name);
+            let versions_dir = config::script_dir().join("_versions").join(&name);
+            let has_backup = !name.is_empty() && (backup_dir.exists() || versions_dir.exists()) && !name.contains("..") && !name.contains("\\") && !name.contains("/");
+            if has_backup {
+                let delete_backup = rfd::MessageDialog::new()
+                    .set_title("Delete Backup?")
+                    .set_description(&format!("'{}' removed from sync list.\n\nAlso delete the backup files?", name))
+                    .set_buttons(rfd::MessageButtons::YesNo)
+                    .show() == rfd::MessageDialogResult::Yes;
+                if delete_backup {
+                    let _ = std::fs::remove_dir_all(&backup_dir);
+                    let _ = std::fs::remove_dir_all(&versions_dir);
+                    rfd::MessageDialog::new()
+                        .set_title("Done")
+                        .set_description(&format!("'{}' and its backup fully removed.", name))
+                        .set_buttons(rfd::MessageButtons::Ok)
+                        .show();
+                } else {
+                    rfd::MessageDialog::new()
+                        .set_title("Removed")
+                        .set_description(&format!("'{}' removed from sync list.\nBackup files kept.", name))
+                        .set_buttons(rfd::MessageButtons::Ok)
+                        .show();
+                }
+            } else {
+                rfd::MessageDialog::new()
+                    .set_title("Removed")
+                    .set_description(&format!("'{}' removed from sync list.", name))
+                    .set_buttons(rfd::MessageButtons::Ok)
+                    .show();
+            }
         });
     }
 
@@ -660,96 +1094,50 @@ pub fn run() {
     }
 
     // --- Set Sync Interval ---
-    app.on_interval_clicked(|| {
-        let cfg = config::load_config();
-        let cur = cfg.sync_interval_minutes;
-        if let Some(val) = ps_inputbox(
-            &format!("Current interval: {} minutes. Enter new interval (1 or more):", cur),
-            "Sync Interval",
-            &cur.to_string(),
-        ) {
-            match val.trim().parse::<i32>() {
-                Ok(mins) if mins >= 1 => {
-                    let mut c2 = config::load_config();
-                    c2.sync_interval_minutes = mins;
-                    config::save_config(&c2);
-                    std::thread::spawn(move || {
-                        sync::register_sync_task(mins);
-                    });
-                    rfd::MessageDialog::new()
-                        .set_title("Sync Interval")
-                        .set_description(&format!("Sync interval set to {} minute(s).", mins))
-                        .set_buttons(rfd::MessageButtons::Ok)
-                        .show();
-                }
-                _ => {
-                    rfd::MessageDialog::new()
-                        .set_title("Invalid Input")
-                        .set_description("Enter a whole number of minutes (1 or more).")
-                        .set_buttons(rfd::MessageButtons::Ok)
-                        .show();
-                }
+    {
+        let w = app.as_weak();
+        app.on_interval_clicked(move || {
+            if let Some(a) = w.upgrade() {
+                let cfg = config::load_config();
+                a.set_input_title("Sync Interval".into());
+                a.set_input_mode(0);
+                a.set_input_prompt(format!("Current: {} min. Enter new interval (1+):", cfg.sync_interval_minutes).into());
+                a.set_input_value(cfg.sync_interval_minutes.to_string().into());
+                a.set_input_visible(true);
             }
-        }
-    });
+        });
+    }
 
     // --- Set Max Versions ---
-    app.on_maxversions_clicked(|| {
-        let cfg = config::load_config();
-        let cur = cfg.max_versions;
-        if let Some(val) = ps_inputbox(
-            &format!("Current: {} versions kept. Enter new limit (1 or more):", cur),
-            "Max Versions",
-            &cur.to_string(),
-        ) {
-            match val.trim().parse::<i32>() {
-                Ok(n) if n >= 1 => {
-                    let mut c2 = config::load_config();
-                    c2.max_versions = n;
-                    config::save_config(&c2);
-                    rfd::MessageDialog::new()
-                        .set_title("Max Versions")
-                        .set_description(&format!("Will keep the last {} version(s).", n))
-                        .set_buttons(rfd::MessageButtons::Ok)
-                        .show();
-                }
-                _ => {
-                    rfd::MessageDialog::new()
-                        .set_title("Invalid Input")
-                        .set_description("Enter a whole number (1 or more).")
-                        .set_buttons(rfd::MessageButtons::Ok)
-                        .show();
-                }
+    {
+        let w = app.as_weak();
+        app.on_maxversions_clicked(move || {
+            if let Some(a) = w.upgrade() {
+                let cfg = config::load_config();
+                a.set_input_title("Max Versions".into());
+                a.set_input_mode(1);
+                a.set_input_prompt(format!("Current: {}. Enter new limit (1+):", cfg.max_versions).into());
+                a.set_input_value(cfg.max_versions.to_string().into());
+                a.set_input_visible(true);
             }
-        }
-    });
+        });
+    }
 
     // --- Manage Exclusions ---
-    app.on_exclusions_clicked(|| {
-        let cfg = config::load_config();
-        let current = cfg.excluded_names.join(", ");
-        let display = if current.is_empty() { "(none)".to_string() } else { current.clone() };
-        if let Some(val) = ps_inputbox(
-            &format!("Current: {}. Enter exclusion names (comma-separated), or clear to remove all:", display),
-            "Manage Exclusions",
-            &current,
-        ) {
-            let trimmed = val.trim();
-            let mut c2 = config::load_config();
-            c2.excluded_names = if trimmed.is_empty() {
-                vec![]
-            } else {
-                trimmed.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect()
-            };
-            let result = if c2.excluded_names.is_empty() { "(none)".to_string() } else { c2.excluded_names.join(", ") };
-            config::save_config(&c2);
-            rfd::MessageDialog::new()
-                .set_title("Exclusions Updated")
-                .set_description(&format!("Exclusions: {}", result))
-                .set_buttons(rfd::MessageButtons::Ok)
-                .show();
-        }
-    });
+    {
+        let w = app.as_weak();
+        app.on_exclusions_clicked(move || {
+            if let Some(a) = w.upgrade() {
+                let cfg = config::load_config();
+                let current = cfg.excluded_names.join(", ");
+                a.set_input_title("Manage Exclusions".into());
+                a.set_input_mode(2);
+                a.set_input_prompt("Enter names (comma-separated), or clear:".into());
+                a.set_input_value(current.into());
+                a.set_input_visible(true);
+            }
+        });
+    }
 
     // --- Versions (per folder) ---
     // Shared state for version restore (paths + source)
@@ -900,7 +1288,7 @@ pub fn run() {
                             let preview_dir = std::env::temp_dir().join("lrgex-preview");
                             let _ = std::fs::remove_dir_all(&preview_dir);
                             let _ = std::fs::create_dir_all(&preview_dir);
-                            if sync::decompress_archive(&path, &preview_dir) {
+                            if sync::decompress_archive(&path, &preview_dir).0 {
                                 let _ = std::process::Command::new("explorer.exe")
                                     .arg(&preview_dir)
                                     .spawn();
@@ -940,6 +1328,103 @@ pub fn run() {
     let health_cache: std::rc::Rc<std::cell::RefCell<(slint::SharedString, slint::Color)>> =
         std::rc::Rc::new(std::cell::RefCell::new((" Checking...".into(), slint::Color::from_rgb_u8(76, 175, 80))));
 
+    // --- Input dialog OK handler (routes by input-mode) ---
+    {
+        let w = app.as_weak();
+        app.on_input_ok(move || {
+            let a = match w.upgrade() { Some(a) => a, None => return };
+            let val = a.get_input_value().to_string();
+            let mode = a.get_input_mode();
+            a.set_input_visible(false);
+
+            match mode {
+                0 => { // Sync Interval
+                    if let Ok(mins) = val.trim().parse::<i32>() {
+                        if mins >= 1 {
+                            let mut c2 = config::load_config();
+                            c2.sync_interval_minutes = mins;
+                            config::save_config(&c2);
+                            std::thread::spawn(move || { sync::register_sync_task(mins); });
+                            rfd::MessageDialog::new()
+                                .set_title("Sync Interval")
+                                .set_description(&format!("Set to {} minute(s).", mins))
+                                .set_buttons(rfd::MessageButtons::Ok)
+                                .show();
+                        } else {
+                            rfd::MessageDialog::new().set_title("Invalid").set_description("Enter 1 or more.").set_buttons(rfd::MessageButtons::Ok).show();
+                        }
+                    } else {
+                        rfd::MessageDialog::new().set_title("Invalid").set_description("Enter a whole number.").set_buttons(rfd::MessageButtons::Ok).show();
+                    }
+                }
+                1 => { // Max Versions
+                    if let Ok(n) = val.trim().parse::<i32>() {
+                        if n >= 1 {
+                            let mut c2 = config::load_config();
+                            c2.max_versions = n;
+                            config::save_config(&c2);
+                            rfd::MessageDialog::new()
+                                .set_title("Max Versions")
+                                .set_description(&format!("Will keep last {} version(s).", n))
+                                .set_buttons(rfd::MessageButtons::Ok)
+                                .show();
+                        } else {
+                            rfd::MessageDialog::new().set_title("Invalid").set_description("Enter 1 or more.").set_buttons(rfd::MessageButtons::Ok).show();
+                        }
+                    } else {
+                        rfd::MessageDialog::new().set_title("Invalid").set_description("Enter a whole number.").set_buttons(rfd::MessageButtons::Ok).show();
+                    }
+                }
+                2 => { // Exclusions
+                    let trimmed = val.trim();
+                    let mut c2 = config::load_config();
+                    c2.excluded_names = if trimmed.is_empty() { vec![] } else {
+                        trimmed.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect()
+                    };
+                    let result = if c2.excluded_names.is_empty() { "(none)".to_string() } else { c2.excluded_names.join(", ") };
+                    config::save_config(&c2);
+                    rfd::MessageDialog::new()
+                        .set_title("Exclusions Updated")
+                        .set_description(&format!("Exclusions: {}", result))
+                        .set_buttons(rfd::MessageButtons::Ok)
+                        .show();
+                }
+                3 => { // Unlink from Windows
+                    if val.trim().eq_ignore_ascii_case("yes") {
+                        let _ = std::fs::remove_file(config::script_dir().join(".lrgex-home"));
+                        config::clear_canonical_home();
+                        let bat_path = std::env::temp_dir().join("lrgex-cleanup.bat");
+                        let bat = "@echo off\r\nping 127.0.0.1 -n 3 > nul\r\nschtasks /Delete /TN \"LRGEX-FolderSync-Rust\" /F >nul 2>&1\r\nreg delete \"HKCU\\Software\\Classes\\Directory\\shell\\LRGEXSync\" /f >nul 2>&1\r\ndel \"%~f0\"\r\n";
+                        let _ = std::fs::write(&bat_path, bat);
+                        rfd::MessageDialog::new()
+                            .set_title("Unlinked")
+                            .set_description("Cleanup will finish in a moment.\n\nYou can now safely delete this folder.")
+                            .set_buttons(rfd::MessageButtons::Ok)
+                            .show();
+                        let _ = std::process::Command::new("cmd.exe")
+                            .args(["/c", bat_path.to_str().unwrap_or("")])
+                            .creation_flags(0x08000000u32)
+                            .spawn();
+                        std::process::exit(0);
+                    } else {
+                        rfd::MessageDialog::new().set_title("Unlink").set_description("Cancelled.").set_buttons(rfd::MessageButtons::Ok).show();
+                    }
+                }
+                _ => {}
+            }
+        });
+    }
+
+    // --- Input dialog Cancel handler ---
+    {
+        let w = app.as_weak();
+        app.on_input_cancel(move || {
+            if let Some(a) = w.upgrade() {
+                a.set_input_visible(false);
+            }
+        });
+    }
+
     // Fast progress check every 3 seconds (just reads a file — no process spawn)
     let progress_timer = slint::Timer::default();
     {
@@ -966,6 +1451,20 @@ pub fn run() {
         let w = app.as_weak();
         let cache = health_cache.clone();
         health_timer.start(slint::TimerMode::Repeated, std::time::Duration::from_secs(30), move || {
+            // Don't overwrite health bar with "OK" while compression/restore is running.
+            // The progress timer (every 3s) handles showing the live progress.
+            if !synclog::read_progress().is_empty() {
+                // Still update the cache, but don't touch the health bar
+                let h = health::get_health();
+                let text: slint::SharedString = format!(" {} - {} ", h.label, h.reason).into();
+                let color = match h.status.as_str() {
+                    "GREEN" => slint::Color::from_rgb_u8(76, 175, 80),
+                    "AMBER" => slint::Color::from_rgb_u8(200, 140, 0),
+                    _ => slint::Color::from_rgb_u8(200, 30, 30),
+                };
+                *cache.borrow_mut() = (text, color);
+                return;
+            }
             let h = health::get_health();
             let text: slint::SharedString = format!(" {} - {} ", h.label, h.reason).into();
             let color = match h.status.as_str() {
@@ -978,6 +1477,27 @@ pub fn run() {
                 a.set_health_text(text);
                 a.set_health_color(color);
             }
+
+            // Migration check: only spawn thread if marker exists (cheap file check).
+            // Zero threads in steady state.
+            // run migration on a background thread. Mutex prevents races.
+            // The user never needs to close/reopen — just restore + play.
+            if crate::sync::migration_marker_exists() {
+            let w_mig = w.clone();
+            std::thread::spawn(move || {
+                let migrations = crate::sync::run_migration_check();
+                if migrations.is_empty() { return; }
+                for m in &migrations {
+                    crate::synclog::write(&format!("  [MIGRATE] {}", m));
+                }
+                if let Some(msg) = migrations.iter().find(|m| !m.starts_with("REFUSED")) {
+                    let msg = msg.clone();
+                    let _ = w_mig.upgrade_in_event_loop(move |a| {
+                        a.set_health_text(msg.into());
+                    });
+                }
+            });
+            } // end migration_marker_exists gate
         });
     }
 
@@ -988,55 +1508,110 @@ pub fn run() {
     });
 
     // --- Unlink from Windows ---
-    app.on_uninstall_clicked(|| {
-        let input = ps_inputbox(
-            "Type 'yes' to unlink.\n\nThis removes the scheduled task, right-click menu, and home marker.\nYour backup files will NOT be deleted.",
-            "Unlink from Windows",
-            ""
-        );
-        let has_input = input.is_some();
-        let confirmed = input
-            .map(|s| s.trim().eq_ignore_ascii_case("yes"))
-            .unwrap_or(false);
-        if !confirmed {
-            if has_input {
-                rfd::MessageDialog::new()
-                    .set_title("Unlink from Windows")
-                    .set_description("Cancelled.")
-                    .set_buttons(rfd::MessageButtons::Ok)
-                    .show();
+    {
+        let w = app.as_weak();
+        app.on_uninstall_clicked(move || {
+            if let Some(a) = w.upgrade() {
+                a.set_input_title("Unlink from Windows".into());
+                a.set_input_mode(3);
+                a.set_input_prompt("Type 'yes' to confirm. Removes task + right-click + marker.\nBackups will NOT be deleted.".into());
+                a.set_input_value("".into());
+                a.set_input_visible(true);
             }
-            return;
+        });
+    }
+
+    // --- Restore OK (dismiss overlay) ---
+    {
+        let w = app.as_weak();
+        app.on_restore_ok(move || {
+            if let Some(a) = w.upgrade() {
+                a.set_restore_visible(false);
+                a.set_restore_done(false);
+            }
+        });
+    }
+
+    // Run all post-launch checks (migration, future checks, etc.)
+    run_post_launch_checks(&app.as_weak());
+
+    // Close guard: warn user if compression or restore is running
+    let w_close = app.as_weak();
+    app.window().on_close_requested(move || {
+        let running = w_close.upgrade()
+            .map(|a| a.get_operation_running() || a.get_restore_visible())
+            .unwrap_or(false);
+        if running {
+            let what = if w_close.upgrade().map(|a| a.get_restore_visible()).unwrap_or(false) { "A restore" } else { "A backup" };
+            let confirm = rfd::MessageDialog::new()
+                .set_title("Operation in Progress")
+                .set_description(&format!("{} is still running.\n\nClosing now will ABORT it.\n\nClose anyway?", what))
+                .set_buttons(rfd::MessageButtons::YesNo)
+                .show() == rfd::MessageDialogResult::Yes;
+            if !confirm {
+                return slint::CloseRequestResponse::KeepWindowShown;
+            }
         }
-
-        // Remove home marker + canonical home from registry
-        let _ = std::fs::remove_file(config::script_dir().join(".lrgex-home"));
-        config::clear_canonical_home();
-
-        // Write cleanup batch to temp (waits for app exit, then cleans up)
-        let bat_path = std::env::temp_dir().join("lrgex-cleanup.bat");
-        let bat = "@echo off\r\nping 127.0.0.1 -n 3 > nul\r\nschtasks /Delete /TN \"LRGEX-FolderSync-Rust\" /F >nul 2>&1\r\nreg delete \"HKCU\\Software\\Classes\\Directory\\shell\\LRGEXSync\" /f >nul 2>&1\r\ndel \"%~f0\"\r\n";
-        let _ = std::fs::write(&bat_path, bat);
-
-        // Show goodbye
-        rfd::MessageDialog::new()
-            .set_title("Unlinked")
-            .set_description("Cleanup will finish in a moment.\n\nYou can now safely delete this folder.")
-            .set_buttons(rfd::MessageButtons::Ok)
-            .show();
-
-        // Launch cleanup batch detached, then exit immediately
-        use std::os::windows::process::CommandExt;
-        let _ = std::process::Command::new("cmd.exe")
-            .args(["/c", bat_path.to_str().unwrap_or("")])
-            .creation_flags(0x08000000u32)
-            .spawn();
-
-        std::process::exit(0);
+        slint::CloseRequestResponse::HideWindow
     });
+
+    // Disable maximize/resize — app looks bad maximized
 
     app.run().unwrap();
 }
+
+// ==================== POST-LAUNCH CHECKS ====================
+// Orchestrator: runs all checks 3s after GUI launch on a background thread.
+//
+// HOW TO ADD A NEW CHECK:
+//   1. Write a function: fn run_my_check(w: &slint::Weak<App>) { ... }
+//   2. Add it to the list in run_post_launch_checks() below.
+//   3. Each check is panic-isolated — one failing check won't kill the others.
+//   4. If a check is slow (network, heavy I/O), spawn its OWN thread inside it
+//      so it doesn't block checks after it.
+//
+fn run_post_launch_checks(weak: &slint::Weak<App>) {
+    let w = weak.clone();
+    std::thread::spawn(move || {
+        // Let the UI settle before doing any work
+        std::thread::sleep(std::time::Duration::from_secs(3));
+
+        // Each check is wrapped in catch_unwind so a panic in one
+        // doesn't silently disable the rest.
+        use std::panic::{self, AssertUnwindSafe};
+
+        // --- Current checks ---
+        let _ = panic::catch_unwind(AssertUnwindSafe(|| { run_save_migration(&w); }));
+
+        // --- Future checks go here ---
+        // let _ = panic::catch_unwind(AssertUnwindSafe(|| { run_update_check(&w); }));
+        // let _ = panic::catch_unwind(AssertUnwindSafe(|| { run_cleanup_check(&w); }));
+    });
+}
+
+/// Check 1: Game save-ID migration.
+/// Only fires if restore happened recently (marker file exists).
+/// Migrates saves from old numeric ID folders to new empty ones.
+/// Non-destructive: never overwrites, never deletes.
+fn run_save_migration(w: &slint::Weak<App>) {
+    let migrations = crate::sync::run_migration_check();
+    if migrations.is_empty() { return; }
+
+    // Log everything (including REFUSED) for debugging
+    for m in &migrations {
+        crate::synclog::write(&format!("  [MIGRATE] {}", m));
+    }
+
+    // Only show real migrations in health bar (not REFUSED — those are
+    // non-game numeric dirs like node_modules/es-abstract/2015, normal noise)
+    if let Some(msg) = migrations.iter().find(|m| !m.starts_with("REFUSED")) {
+        let msg = msg.clone();
+        let _ = w.upgrade_in_event_loop(move |a| {
+            a.set_health_text(msg.into());
+        });
+    }
+}
+
 fn setup_home() {
     rfd::MessageDialog::new()
         .set_title("First Run Setup")
@@ -1074,12 +1649,34 @@ RECOMMENDED: a folder inside a cloud service (OneDrive, Google Drive, etc.) so y
 }
 
 fn refresh_folders(app: &App) {
-    let cfg = config::load_config();
-    let model = VecModel::from_iter(cfg.junctions.iter().map(|j| FolderEntry {
-        path: j.source_path.clone().into(),
-        auto_restore: if j.auto_restore { "ON" } else { "OFF" }.into(),
+    let mut cfg = config::load_config();
+    let mut cfg_changed = false;
+
+    let model = VecModel::from_iter(cfg.junctions.iter_mut().map(|j| {
+        // Cached TRUE → skip scan entirely (confirmed game folder)
+        // Uncached/FALSE → scan (bounded 300-dir cap), cache if game found
+        let is_game = if j.is_game {
+            true
+        } else {
+            let detected = crate::sync::is_game_folder(&j.source_path);
+            if detected {
+                j.is_game = true; // Cache: persist so future launches skip scan
+                cfg_changed = true;
+            }
+            detected
+        };
+        FolderEntry {
+            path: j.source_path.clone().into(),
+            auto_restore: if j.auto_restore { "ON" } else { "OFF" }.into(),
+            is_game,
+        }
     }));
     app.set_folders(slint::ModelRc::new(model));
+
+    // Persist newly-detected game flags (TRUE only — never cache FALSE)
+    if cfg_changed {
+        let _ = config::save_config(&cfg);
+    }
 }
 
 fn update_rc_label(app: &App) {
@@ -1126,19 +1723,3 @@ fn toggle_rightclick(enable: bool) {
 }
 
 
-fn ps_inputbox(prompt: &str, title: &str, default: &str) -> Option<String> {
-    let p = prompt.replace('\'', "''");
-    let t = title.replace('\'', "''");
-    let d = default.replace('\'', "''");
-    let script = format!(
-        "Add-Type -AssemblyName Microsoft.VisualBasic; [Microsoft.VisualBasic.Interaction]::InputBox('{}', '{}', '{}')",
-        p, t, d
-    );
-    let output = std::process::Command::new("powershell.exe")
-        .args(["-NoProfile", "-Command", &script])
-        .creation_flags(0x08000000u32)
-        .output()
-        .ok()?;
-    let text = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    if text.is_empty() { None } else { Some(text) }
-}

@@ -28,14 +28,51 @@ pub fn write(msg: &str) {
 
 pub fn write_progress(msg: &str) {
     let path = crate::config::script_dir().join("sync-progress.txt");
-    let _ = std::fs::write(&path, msg);
+    let pid = std::process::id();
+    let line = format!("{}|{}", pid, msg);
+    let _ = std::fs::write(&path, line);
 }
 
 pub fn read_progress() -> String {
-    std::fs::read_to_string(crate::config::script_dir().join("sync-progress.txt"))
-        .unwrap_or_default()
-        .trim()
-        .to_string()
+    let raw = std::fs::read_to_string(crate::config::script_dir().join("sync-progress.txt"))
+        .unwrap_or_default();
+    let raw = raw.trim();
+    if raw.is_empty() { return String::new(); }
+
+    // Format: PID|message — check BOTH PID liveness AND file mtime (PID reuse backstop)
+    if let Some((pid_str, msg)) = raw.split_once('|') {
+        if let Ok(pid) = pid_str.parse::<u32>() {
+            let path = crate::config::script_dir().join("sync-progress.txt");
+            // mtime backstop: clear if file untouched >10 min (defeats PID reuse)
+            let stale = std::fs::metadata(&path)
+                .ok()
+                .and_then(|m| m.modified().ok())
+                .map(|t| t.elapsed().unwrap_or_default().as_secs() > 600)
+                .unwrap_or(true);
+            if stale {
+                let _ = std::fs::write(&path, "");
+                return String::new();
+            }
+            if is_pid_alive(pid) {
+                return msg.to_string();
+            } else {
+                let _ = std::fs::write(&path, "");
+                return String::new();
+            }
+        }
+    }
+    String::new()
+}
+
+pub fn is_pid_alive(pid: u32) -> bool {
+    use windows_sys::Win32::System::Threading::{OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION};
+    use windows_sys::Win32::Foundation::CloseHandle;
+    unsafe {
+        let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
+        if handle.is_null() { return false; }
+        CloseHandle(handle);
+        true
+    }
 }
 
 pub fn read_tail(n: usize) -> String {

@@ -21,7 +21,24 @@ fn main() {
         }
         i += 1;
     }
-    if sync_mode { config::ensure_versions_setup(); sync::sync_all_pairs(); return; }
+    if sync_mode {
+        // Mutex prevents concurrent sync processes from stacking up
+        use windows_sys::Win32::System::Threading::CreateMutexW;
+        use windows_sys::Win32::Foundation::GetLastError;
+        use std::os::windows::ffi::OsStrExt;
+        let sync_mutex: Vec<u16> = std::ffi::OsStr::new("LRGEXSyncSyncLock")
+            .encode_wide().chain(std::iter::once(0)).collect();
+        unsafe {
+            let handle = CreateMutexW(std::ptr::null(), 0, sync_mutex.as_ptr());
+            if GetLastError() == 183 {
+                return; // Another sync is already running — exit silently
+            }
+            let _ = handle; // keep mutex alive
+        }
+        config::ensure_versions_setup();
+        sync::sync_all_pairs();
+        return;
+    }
     if auto_restore {
         let cfg = config::load_config();
         for j in &cfg.junctions {
@@ -44,7 +61,7 @@ fn main() {
 
         let mut cfg = config::load_config();
         cfg.junctions.retain(|j| j.source_path != link_path);
-        cfg.junctions.push(config::Junction { source_path: link_path.clone(), auto_restore: true, created: synclog::timestamp() });
+        cfg.junctions.push(config::Junction { source_path: link_path.clone(), auto_restore: true, created: synclog::timestamp(), is_game: false });
         config::save_config(&cfg);
         let (ok, reason) = sync::sync_pair_to_cloud(&link_path, &cfg.excluded_names, cfg.max_versions, true);
         if ok {
@@ -63,5 +80,19 @@ fn main() {
         }
         return;
     }
+    // Single instance — only for GUI mode (not -sync, -link, -autorestore)
+    use windows_sys::Win32::System::Threading::CreateMutexW;
+    use windows_sys::Win32::Foundation::GetLastError;
+    use std::os::windows::ffi::OsStrExt;
+    let mutex_name: Vec<u16> = std::ffi::OsStr::new("LRGEXSyncSingleInstance")
+        .encode_wide().chain(std::iter::once(0)).collect();
+    unsafe {
+        let handle = CreateMutexW(std::ptr::null(), 0, mutex_name.as_ptr());
+        if GetLastError() == 183 { // ERROR_ALREADY_EXISTS
+            return; // Another GUI instance is running — exit silently
+        }
+        let _ = handle; // keep mutex alive
+    }
+
     gui::run();
 }

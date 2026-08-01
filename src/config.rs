@@ -10,6 +10,8 @@ pub struct Junction {
     pub auto_restore: bool,
     #[serde(default)]
     pub created: String,
+    #[serde(default)]
+    pub is_game: bool,
 }
 
 #[derive(Serialize, Deserialize, Clone)]

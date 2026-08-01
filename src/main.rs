@@ -46,8 +46,21 @@ fn main() {
         cfg.junctions.retain(|j| j.source_path != link_path);
         cfg.junctions.push(config::Junction { source_path: link_path.clone(), auto_restore: true, created: synclog::timestamp() });
         config::save_config(&cfg);
-        let (ok, _) = sync::sync_pair_to_cloud(&link_path, &cfg.excluded_names, cfg.max_versions, true);
-        if ok { crate::health::write_status(1, 0, 0, &[]); }
+        let (ok, reason) = sync::sync_pair_to_cloud(&link_path, &cfg.excluded_names, cfg.max_versions, true);
+        if ok {
+            crate::health::write_status(1, 0, 0, &[]);
+            rfd::MessageDialog::new()
+                .set_title("Sync Complete")
+                .set_description(&format!("'{}' backed up successfully.", leaf))
+                .set_buttons(rfd::MessageButtons::Ok)
+                .show();
+        } else {
+            rfd::MessageDialog::new()
+                .set_title("Sync Failed")
+                .set_description(&format!("Failed to back up '{}'.\n\nError: {}", leaf, reason))
+                .set_buttons(rfd::MessageButtons::Ok)
+                .show();
+        }
         return;
     }
     gui::run();

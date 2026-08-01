@@ -1,5 +1,8 @@
 # Patch Notes — LRGEX Folder Sync
 
+## v1.2.12
+- Right-click sync shows confirmation dialog after completion (success or failure with error)
+
 ## v1.2.11
 - Preview button: browse snapshot in WinRAR/7-Zip (or extract to temp + Explorer)
 - "Backup Folder" renamed to "Backup Now"

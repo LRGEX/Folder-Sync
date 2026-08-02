@@ -8,6 +8,17 @@ mod gui;
 mod update;
 
 fn main() {
+    // Crash logger: write panic info to lrgex-crash.log next to the exe
+    std::panic::set_hook(Box::new(|info| {
+        let exe_dir = std::env::current_exe()
+            .and_then(|e| e.parent().map(|p| p.to_path_buf()).ok_or(()).map_err(|_| std::io::Error::new(std::io::ErrorKind::Other, "")))
+            .unwrap_or_else(|_| std::path::PathBuf::from("."));
+        let crash_log = exe_dir.join("lrgex-crash.log");
+        let msg = format!("{} CRASH: {}
+", crate::synclog::timestamp(), info);
+        let _ = std::fs::OpenOptions::new().create(true).append(true).open(&crash_log)
+            .and_then(|mut f| std::io::Write::write_all(&mut f, msg.as_bytes()));
+    }));
     // Force software renderer — works on VMs without GPU
     if std::env::var("SLINT_BACKEND").is_err() {
         std::env::set_var("SLINT_BACKEND", "software");

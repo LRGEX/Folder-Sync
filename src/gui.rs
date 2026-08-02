@@ -679,6 +679,7 @@ pub fn run() {
     // Self-heal: register task using canonical home (never current_exe)
     config::cleanup_legacy_ps();
     let cfg0 = config::load_config();
+    sync::cleanup_old_tasks();
     sync::register_sync_task(cfg0.sync_interval_minutes);
     config::ensure_versions_setup();
 

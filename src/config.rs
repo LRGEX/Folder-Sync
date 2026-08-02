@@ -52,7 +52,6 @@ pub fn config_path() -> PathBuf {
 
 pub fn save_config(cfg: &Config) {
     let path = config_path();
-    // Contract absolute paths → portable form for storage
     let mut cfg = cfg.clone();
     for j in &mut cfg.junctions {
         j.source_path = crate::pathutil::contract(&j.source_path);
@@ -61,29 +60,54 @@ pub fn save_config(cfg: &Config) {
         let _ = std::fs::write(&path, data);
     }
 }
+
 pub fn load_config() -> Config {
     let path = config_path();
-    let mut cfg = match std::fs::read_to_string(&path) {
-        Ok(data) => {
-            let data = data.strip_prefix('\u{feff}').unwrap_or(&data);
-            serde_json::from_str::<Config>(data).unwrap_or_default()
-        }
-        Err(_) => Config::default(),
+    let raw = match std::fs::read_to_string(&path) {
+        Ok(data) => data.strip_prefix('\u{feff}').unwrap_or(&data).to_string(),
+        Err(_) => return Config::default(),
     };
-    // Expand portable paths → absolute for in-memory use
+
+    let mut cfg: Config = serde_json::from_str(&raw).unwrap_or_default();
+    let mut needs_save = false;
+    let user_profile = std::env::var("USERPROFILE").unwrap_or_default();
+    let current_user = user_profile.rsplit(std::path::MAIN_SEPARATOR).next().unwrap_or("").to_lowercase();
+
     for j in &mut cfg.junctions {
         j.source_path = crate::pathutil::expand(&j.source_path);
+        let lower = j.source_path.to_lowercase();
+        let sep = std::path::MAIN_SEPARATOR;
+        let prefix = format!("c:{}users{}", sep, sep);
+        if lower.starts_with(&prefix) && !current_user.is_empty() {
+            let after_prefix = &j.source_path[prefix.len()..];
+            if let Some(bs) = after_prefix.find(sep) {
+                let old_user = after_prefix[..bs].to_lowercase();
+                if old_user != current_user && old_user != "public" {
+                    let suffix = &after_prefix[bs..];
+                    let healed = format!("{}{}", user_profile, suffix);
+                    crate::synclog::write(&format!("  [HEAL] {} -> {}", j.source_path, healed));
+                    j.source_path = healed;
+                    needs_save = true;
+                }
+            }
+        }
     }
+
+    let has_absolute = raw.contains("SourcePath") && raw.contains(":\\");
+    if needs_save || has_absolute {
+        crate::synclog::write("  [MIGRATE] Saving portable config");
+        save_config(&cfg);
+    }
+
     cfg
 }
+
 pub fn is_home() -> bool {
     script_dir().join(".lrgex-home").exists()
 }
 
-const REG_PATH: &str = "SOFTWARE\\LRGEX\\FolderSync";
+const REG_PATH: &str = r"SOFTWARErgexfoldersync";
 
-/// Canonical home path — stored in registry, ONE source of truth.
-/// register_sync_task uses THIS, never current_exe().
 pub fn canonical_home() -> Option<PathBuf> {
     winreg::RegKey::predef(winreg::enums::HKEY_CURRENT_USER)
         .open_subkey(REG_PATH)
@@ -92,7 +116,6 @@ pub fn canonical_home() -> Option<PathBuf> {
         .map(PathBuf::from)
 }
 
-/// Set canonical home in registry (called once during first-run setup)
 pub fn set_canonical_home(path: &Path) {
     if let Ok(key) = winreg::RegKey::predef(winreg::enums::HKEY_CURRENT_USER)
         .create_subkey(REG_PATH) {
@@ -100,28 +123,23 @@ pub fn set_canonical_home(path: &Path) {
     }
 }
 
-/// Delete canonical home from registry (called during uninstall)
 pub fn clear_canonical_home() {
     if let Ok(parent) = winreg::RegKey::predef(winreg::enums::HKEY_CURRENT_USER)
-        .open_subkey_with_flags("SOFTWARE\\LRGEX", winreg::enums::KEY_WRITE) {
+        .open_subkey_with_flags(r"SOFTWARErgex", winreg::enums::KEY_WRITE) {
         let _ = parent.delete_subkey_all("FolderSync");
     }
 }
 
-/// Clean up old PowerShell version artifacts if they exist.
-/// Safe to call on every launch — silently skips if nothing found.
 pub fn cleanup_legacy_ps() {
     use std::os::windows::process::CommandExt;
     use std::process::Command;
 
-    // 1. Delete old PS scheduled task (LRGEX-FolderSync without -Rust)
     let old_task = Command::new("schtasks.exe")
         .args(["/Query", "/TN", "LRGEX-FolderSync"])
         .creation_flags(0x08000000u32)
         .output();
     if let Ok(out) = &old_task {
         if out.status.success() {
-            // Old task exists — delete it
             let _ = Command::new("schtasks.exe")
                 .args(["/Delete", "/TN", "LRGEX-FolderSync", "/F"])
                 .creation_flags(0x08000000u32)
@@ -129,7 +147,6 @@ pub fn cleanup_legacy_ps() {
         }
     }
 
-    // 2. Delete old VBS runner if it exists
     let local_app = std::env::var("LOCALAPPDATA").unwrap_or_default();
     let vbs_path = std::path::PathBuf::from(&local_app)
         .join("LRGEX").join("sync-runner.vbs");
@@ -137,7 +154,6 @@ pub fn cleanup_legacy_ps() {
         let _ = std::fs::remove_file(&vbs_path);
     }
 
-    // 3. Delete old VBS in home folder (PS version stored it there too)
     let home_vbs = script_dir().join("sync-runner.vbs");
     if home_vbs.exists() {
         let _ = std::fs::remove_file(&home_vbs);
@@ -157,8 +173,6 @@ pub fn trash_base() -> PathBuf {
     script_dir().join("_versions")
 }
 
-/// One-time setup: migrate old _trash → _versions, set hidden attribute.
-/// Call ONCE at startup, not in hot paths.
 pub fn ensure_versions_setup() {
     let versions = trash_base();
     if !versions.exists() {
@@ -168,7 +182,6 @@ pub fn ensure_versions_setup() {
         }
     }
     if versions.exists() {
-        // Skip attrib spawn if already hidden+system (0x2=hidden, 0x4=system)
         use std::os::windows::fs::MetadataExt;
         let already_set = std::fs::metadata(&versions)
             .map(|m| m.file_attributes() & 0x6 == 0x6)
@@ -187,17 +200,14 @@ pub fn trash_path_for(leaf: &str) -> PathBuf {
     trash_base().join(leaf)
 }
 
-/// Backup directory: home/backup/<folder-name>/
 pub fn backup_dir_for(leaf: &str) -> PathBuf {
     script_dir().join("backup").join(leaf)
 }
 
-/// Backup file path: home/backup/<folder-name>/<folder-name>.tar.zst
 pub fn backup_file_for(leaf: &str) -> PathBuf {
     backup_dir_for(leaf).join(format!("{}.tar.zst", leaf))
 }
 
-/// Sidecar path: home/backup/<folder-name>/<folder-name>.tar.zst.size
 pub fn sidecar_for(leaf: &str) -> PathBuf {
     backup_dir_for(leaf).join(format!("{}.tar.zst.size", leaf))
 }

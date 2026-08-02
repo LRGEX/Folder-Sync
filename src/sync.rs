@@ -334,22 +334,21 @@ pub fn pre_check_restore(paths: &[String]) -> Vec<(String, String)> {
             failures.push((leaf, "backup archive is corrupt or incomplete".into()));
             continue;
         }
-
-        // 3. Destination is writable?
+        // 3. Destination is writable? (report ACTUAL error, not generic)
         let dest = std::path::Path::new(path);
         let can_write = if dest.exists() {
             let test = dest.join(".lrgex_write_test");
             match std::fs::File::create(&test) {
                 Ok(_) => { let _ = std::fs::remove_file(&test); true }
-                Err(_) => false,
+                Err(e) => { failures.push((leaf, format!("write test failed: {}", e))); continue; }
             }
         } else {
-            std::fs::create_dir_all(dest).is_ok()
+            match std::fs::create_dir_all(dest) {
+                Ok(_) => true,
+                Err(e) => { failures.push((leaf, format!("cannot create folder: {}", e))); continue; }
+            }
         };
-        if !can_write {
-            failures.push((leaf, "permission denied \u{2014} run app as administrator".into()));
-            continue;
-        }
+        let _ = can_write;
     }
 
     failures

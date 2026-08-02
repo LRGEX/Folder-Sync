@@ -58,7 +58,6 @@ fn add_to_tar<W: std::io::Write>(
             } else {
                 match builder.append_path_with_name(&path, path.strip_prefix(base).unwrap_or(&path)) {
                     Ok(_) => {
-            crate::synclog::write("  [DECOMPRESS] tar.unpack OK — checking temp contents");
                         *processed += 1;
                         if *processed % 500 == 0 {
                             let pct = (*processed as f64 / total as f64 * 100.0) as usize;

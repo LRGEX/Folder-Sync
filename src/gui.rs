@@ -874,8 +874,7 @@ pub fn run() {
                     let prog = format!("{} of {}: {}", i + 1, total, leaf);
                     w2.upgrade_in_event_loop(move |a| { a.set_restore_msg(prog.into()); }).ok();
                     let (ok, reason) = sync::restore_pair_from_cloud(source);
-                    { let rlog = crate::config::script_dir().join("restore.log"); let rl = format!("{}   {} — {} — {}", crate::synclog::timestamp(), if ok { "OK" } else { "FAIL" }, leaf, reason); let _ = std::fs::OpenOptions::new().create(true).append(true).open(&rlog).and_then(|mut f| std::io::Write::write_all(&mut f, format!("{}
-", rl).as_bytes())); }
+                    crate::synclog::write(&format!("  [RESTORE] {} — {} — {}", if ok { "OK" } else { "FAIL" }, leaf, reason));
                     if ok { count += 1; }
                     else { failures.push(format!("{}: {}", leaf, reason)); }
                 }

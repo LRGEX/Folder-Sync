@@ -58,6 +58,7 @@ fn add_to_tar<W: std::io::Write>(
             } else {
                 match builder.append_path_with_name(&path, path.strip_prefix(base).unwrap_or(&path)) {
                     Ok(_) => {
+            crate::synclog::write("  [DECOMPRESS] tar.unpack OK — checking temp contents");
                         *processed += 1;
                         if *processed % 500 == 0 {
                             let pct = (*processed as f64 / total as f64 * 100.0) as usize;
@@ -90,6 +91,8 @@ pub fn decompress_archive(archive: &Path, dest: &Path) -> (bool, String) {
     let _ = std::fs::remove_dir_all(&temp_dir);
     let _ = std::fs::create_dir_all(&temp_dir);
 
+    let arch_size = std::fs::metadata(archive).map(|m| m.len()).unwrap_or(0);
+    crate::synclog::write(&format!("  [DECOMPRESS] {} — archive={} dest={} size={} bytes", archive.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default(), archive.display(), dest.display(), arch_size));
     let file = match std::fs::File::open(archive) {
         Ok(f) => f,
         Err(e) => { let _ = std::fs::remove_dir_all(&temp_dir); return (false, format!("cannot open archive: {}", e)); }
@@ -102,6 +105,7 @@ pub fn decompress_archive(archive: &Path, dest: &Path) -> (bool, String) {
 
     match tar.unpack(&temp_dir) {
         Ok(_) => {
+            crate::synclog::write("  [DECOMPRESS] tar.unpack OK — checking temp contents");
             // Full success — atomic rename-swap:
             // 1. Rename dest → dest.lrgex_bak
             // 2. Rename temp → dest

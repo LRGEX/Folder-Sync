@@ -832,25 +832,37 @@ pub fn run() {
                 count_cfg.junctions.iter().map(|j| j.source_path.clone()).collect()
             };
 
-            // PRE-CHECK: validate ALL folders before touching ANY.
-            // If any fails (permissions, corrupt archive), abort entirely — no partial restores.
+            // PRE-CHECK: skip folders that fail (permissions, corrupt archive).
+            // Restore the rest. Each folder is still atomic (never half-written).
             let failures = crate::sync::pre_check_restore(&to_restore);
-            if !failures.is_empty() {
-                let msg = format!("RESTORE ABORTED \u{2014} {} folder(s) failed pre-check:\n\n{}",
+            let to_restore: Vec<String> = if failures.is_empty() {
+                to_restore
+            } else if failures.len() >= to_restore.len() {
+                // ALL failed — nothing to restore
+                let msg = format!("RESTORE ABORTED — all {} folder(s) failed pre-check:
+
+{}",
                     failures.len(),
-                    failures.iter().map(|(name, reason)| format!("  {}: {}", name, reason)).collect::<Vec<_>>().join("\n"));
+                    failures.iter().map(|(name, reason)| format!("  {}: {}", name, reason)).collect::<Vec<_>>().join("
+"));
                 a.set_restore_msg(msg.into());
                 a.set_restore_failed(true);
                 a.set_restore_done(true);
                 a.set_restore_visible(true);
                 return;
-            }
-
+            } else {
+                // Some failed — filter them out, restore the rest
+                let failed_names: Vec<String> = failures.iter().map(|(n, _)| n.clone()).collect();
+                to_restore.into_iter().filter(|path| {
+                    let leaf = std::path::Path::new(path).file_name()
+                        .map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+                    !failed_names.contains(&leaf)
+                }).collect()
+            };
+            let junctions = to_restore;
             a.set_restore_msg("Preparing...".into());
             a.set_restore_visible(true);
             a.set_restore_done(false);
-
-            let junctions = to_restore;
             let total = junctions.len();
             let w2 = w.clone();
             std::thread::spawn(move || {
@@ -862,6 +874,8 @@ pub fn run() {
                     let prog = format!("{} of {}: {}", i + 1, total, leaf);
                     w2.upgrade_in_event_loop(move |a| { a.set_restore_msg(prog.into()); }).ok();
                     let (ok, reason) = sync::restore_pair_from_cloud(source);
+                    { let rlog = crate::config::script_dir().join("restore.log"); let rl = format!("{}   {} — {} — {}", crate::synclog::timestamp(), if ok { "OK" } else { "FAIL" }, leaf, reason); let _ = std::fs::OpenOptions::new().create(true).append(true).open(&rlog).and_then(|mut f| std::io::Write::write_all(&mut f, format!("{}
+", rl).as_bytes())); }
                     if ok { count += 1; }
                     else { failures.push(format!("{}: {}", leaf, reason)); }
                 }

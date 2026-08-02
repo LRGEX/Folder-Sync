@@ -105,7 +105,7 @@ pub fn decompress_archive(archive: &Path, dest: &Path) -> (bool, String) {
 
     match tar.unpack(&temp_dir) {
         Ok(_) => {
-            crate::synclog::write("  [DECOMPRESS] tar.unpack OK — checking temp contents");
+            let ec = std::fs::read_dir(&temp_dir).map(|d| d.count()).unwrap_or(0); crate::synclog::write(&format!("  [DECOMPRESS] unpack OK — {} entries in temp, {} bytes archive", ec, arch_size));
             // Full success — atomic rename-swap:
             // 1. Rename dest → dest.lrgex_bak
             // 2. Rename temp → dest

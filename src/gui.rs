@@ -908,7 +908,7 @@ pub fn run() {
                     if !skipped_msg.is_empty() {
                         m.push_str(&format!("
 
-Skipped (needs admin):
+Skipped:
 {}", skipped_msg));
                     }
                     if !failures.is_empty() {
@@ -1036,10 +1036,13 @@ Failed: {}", failures.join(", ")));
             let enabled = is_rightclick_enabled();
             let new_state = !enabled;
             toggle_rightclick(new_state);
+            let actually_enabled = is_rightclick_enabled();
             rfd::MessageDialog::new()
                 .set_title("Right-Click Sync")
-                .set_description(if new_state {
+                .set_description(if actually_enabled {
                     "Right-click sync ENABLED. Right-click any folder to sync it."
+                } else if new_state {
+                    "FAILED to enable. Try running as Administrator."
                 } else {
                     "Right-click sync removed."
                 })
@@ -1751,8 +1754,11 @@ fn is_rightclick_enabled() -> bool {
 }
 
 fn toggle_rightclick(enable: bool) {
+    let sep = std::path::MAIN_SEPARATOR;
+    let shell_path = format!("Software{}Classes{}Directory{}shell", sep, sep, sep);
     let shell = winreg::RegKey::predef(winreg::enums::HKEY_CURRENT_USER)
-        .open_subkey_with_flags(r"Software\Classes\Directory\shell", winreg::enums::KEY_ALL_ACCESS);
+        .create_subkey(&shell_path)
+        .map(|(k,_)| k);
     if enable {
         if let Ok(shell) = shell {
             // Create LRGEXSync key with display name
@@ -1777,6 +1783,6 @@ fn toggle_rightclick(enable: bool) {
             let _ = shell.delete_subkey_all("LRGEXSync");
         }
     }
+
+
 }
-
-

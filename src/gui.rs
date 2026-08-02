@@ -1015,8 +1015,8 @@ pub fn run() {
         let total = cfg.junctions.len();
         if total == 0 {
             rfd::MessageDialog::new()
-                .set_title("Junction Health Check")
-                .set_description("No junctions configured yet.")
+                .set_title("Backup Health Check")
+                .set_description("No folders configured yet.")
                 .set_buttons(rfd::MessageButtons::Ok)
                 .show();
             return;
@@ -1026,24 +1026,41 @@ pub fn run() {
         for j in &cfg.junctions {
             let leaf = std::path::Path::new(&j.source_path)
                 .file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
-            let cloud = config::pair_cloud_path(&j.source_path);
-            if cloud.exists() {
+            let backup = config::backup_file_for(&leaf);
+            let source_exists = std::path::Path::new(&j.source_path).exists();
+            if backup.exists() {
                 ok_count += 1;
-                details.push_str(&format!("\n  {} - OK", leaf));
+                let size_mb = std::fs::metadata(&backup).map(|m| m.len() as f64 / 1_048_576.0).unwrap_or(0.0);
+                let age_hours = std::fs::metadata(&backup).ok()
+                    .and_then(|m| m.modified().ok())
+                    .and_then(|t| t.elapsed().ok())
+                    .map(|e| e.as_secs() / 3600)
+                    .unwrap_or(999);
+                let age_str = if age_hours < 24 {
+                    format!("{}h ago", age_hours)
+                } else {
+                    format!("{}d ago", age_hours / 24)
+                };
+                let src_status = if source_exists { "source OK" } else { "source MISSING" };
+                let stale = if (age_hours as i32) > cfg.sync_interval_minutes / 60 { " \u{26a0} STALE" } else { "" };
+                details.push_str(&format!("\n  {} \u{2014} {:.1} MB, {}, {}{}", leaf, size_mb, age_str, src_status, stale));
             } else {
-                details.push_str(&format!("\n  {} - MISSING", leaf));
+                details.push_str(&format!("\n  {} \u{2014} NO BACKUP", leaf));
             }
         }
         rfd::MessageDialog::new()
-            .set_title("Junction Health Check")
-            .set_description(&format!("{} of {} junctions healthy:{}", ok_count, total, details))
+            .set_title("Backup Health Check")
+            .set_description(&format!("{} of {} folders backed up:{}", ok_count, total, details))
             .set_buttons(rfd::MessageButtons::Ok)
             .show();
     });
 
     // --- Export Configuration ---
     app.on_export_clicked(|| {
-        let cfg = config::load_config();
+        let mut cfg = config::load_config();
+        for j in &mut cfg.junctions {
+            j.source_path = crate::pathutil::contract(&j.source_path);
+        }
         if let Some(path) = rfd::FileDialog::new()
             .set_file_name("folder-sync-config.json")
             .add_filter("JSON", &["json"])

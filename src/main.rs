@@ -1,5 +1,6 @@
 #![windows_subsystem = "windows"]
 mod config;
+mod pathutil;
 mod sync;
 mod synclog;
 mod health;

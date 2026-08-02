@@ -495,18 +495,29 @@ pub fn restore_snapshot(snapshot_dir: &Path, source: &str) -> (bool, String) {
 pub fn register_sync_task(interval_minutes: i32) -> bool {
     let home = match config::canonical_home() {
         Some(h) => h,
-        None => return false, // not registered yet — can't register task
+        None => return false,
     };
     let exe = home.join("LRGEXSync.exe");
     let task_cmd = format!("\"{}\" -sync", exe.to_string_lossy());
+
+    // schtasks /SC MINUTE max is 1439, /SC HOURLY max is 23.
+    // Pick the right schedule type based on interval size.
+    let (schedule, modifier) = if interval_minutes >= 1440 {
+        // 24+ hours: MINUTE max is 1439, use DAILY instead
+        let days = (interval_minutes / 1440).max(1);
+        ("DAILY", days.to_string())
+    } else {
+        // Under 24 hours: MINUTE with exact precision
+        ("MINUTE", interval_minutes.to_string())
+    };
 
     match Command::new("schtasks.exe")
         .args([
             "/Create",
             "/TN", "LRGEX-FolderSync-Rust",
             "/TR", &task_cmd,
-            "/SC", "MINUTE",
-            "/MO", &interval_minutes.to_string(),
+            "/SC", schedule,
+            "/MO", &modifier,
             "/F",
         ])
         .creation_flags(0x08000000u32)
@@ -516,7 +527,6 @@ pub fn register_sync_task(interval_minutes: i32) -> bool {
         Err(_) => false,
     }
 }
-
 // ==================== SAVE-ID MIGRATION ====================
 
 /// Directories that never contain game saves. Skipped during scanning to avoid

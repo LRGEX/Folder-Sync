@@ -50,24 +50,32 @@ pub fn config_path() -> PathBuf {
     script_dir().join("junction-config.json")
 }
 
-pub fn load_config() -> Config {
-    let path = config_path();
-    match std::fs::read_to_string(&path) {
-        Ok(data) => {
-            let data = data.strip_prefix('\u{feff}').unwrap_or(&data);
-            serde_json::from_str(data).unwrap_or_default()
-        }
-        Err(_) => Config::default(),
-    }
-}
-
 pub fn save_config(cfg: &Config) {
     let path = config_path();
-    if let Ok(data) = serde_json::to_string_pretty(cfg) {
+    // Contract absolute paths → portable form for storage
+    let mut cfg = cfg.clone();
+    for j in &mut cfg.junctions {
+        j.source_path = crate::pathutil::contract(&j.source_path);
+    }
+    if let Ok(data) = serde_json::to_string_pretty(&cfg) {
         let _ = std::fs::write(&path, data);
     }
 }
-
+pub fn load_config() -> Config {
+    let path = config_path();
+    let mut cfg = match std::fs::read_to_string(&path) {
+        Ok(data) => {
+            let data = data.strip_prefix('\u{feff}').unwrap_or(&data);
+            serde_json::from_str::<Config>(data).unwrap_or_default()
+        }
+        Err(_) => Config::default(),
+    };
+    // Expand portable paths → absolute for in-memory use
+    for j in &mut cfg.junctions {
+        j.source_path = crate::pathutil::expand(&j.source_path);
+    }
+    cfg
+}
 pub fn is_home() -> bool {
     script_dir().join(".lrgex-home").exists()
 }
@@ -136,6 +144,7 @@ pub fn cleanup_legacy_ps() {
     }
 }
 
+#[allow(dead_code)]
 pub fn pair_cloud_path(source: &str) -> PathBuf {
     let leaf = std::path::Path::new(source)
         .file_name()

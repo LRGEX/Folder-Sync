@@ -874,7 +874,6 @@ pub fn run() {
                         .map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
                     let prog = format!("Decompressing {} ({} of {})...", leaf, i + 1, total);
                     w2.upgrade_in_event_loop(move |a| { a.set_restore_msg(prog.into()); }).ok();
-                    let leaf2 = leaf.clone();
                     let (ok, reason) = sync::restore_pair_from_cloud(source);
                     crate::synclog::write(&format!("  [RESTORE] {} — {} — {}", if ok { "OK" } else { "FAIL" }, leaf, reason));
                     if ok { count += 1; }

@@ -836,6 +836,7 @@ pub fn run() {
             // PRE-CHECK: skip folders that fail (permissions, corrupt archive).
             // Restore the rest. Each folder is still atomic (never half-written).
             let failures = crate::sync::pre_check_restore(&to_restore);
+            let mut skipped_msg = String::new();
             let to_restore: Vec<String> = if failures.is_empty() {
                 to_restore
             } else if failures.len() >= to_restore.len() {
@@ -852,12 +853,13 @@ pub fn run() {
                 a.set_restore_visible(true);
                 return;
             } else {
-                // Some failed — filter them out, restore the rest
-                let failed_names: Vec<String> = failures.iter().map(|(n, _)| n.clone()).collect();
+                // Some failed — filter them out, save reasons for final message
+                let skipped: Vec<String> = failures.iter().map(|(n, r)| format!("{}: {}", n, r)).collect();
+                skipped_msg = skipped.join("; ");
                 to_restore.into_iter().filter(|path| {
                     let leaf = std::path::Path::new(path).file_name()
                         .map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
-                    !failed_names.contains(&leaf)
+                    !failures.iter().any(|(n, _)| n == &leaf)
                 }).collect()
             };
             let junctions = to_restore;
@@ -899,13 +901,22 @@ pub fn run() {
                 if count > 0 {
                     crate::sync::set_migration_pending();
                 }
-                let (msg, failed) = if count == total && failures.is_empty() {
-                    (format!("Restored {} of {} folder(s).", count, total), false)
-                } else if count == 0 {
-                    let reasons = failures.join("\n");
-                    (format!("FAILED — 0 of {} restored.\n\n{}\n\nIf the folder is in Program Files, run the app as Administrator.", total, reasons), true)
+                let (msg, failed) = if count == total && failures.is_empty() && skipped_msg.is_empty() {
+                    (format!("Restored {} folder(s).", count), false)
                 } else {
-                    (format!("Partial: {} of {} restored.\nFailed: {}", count, total, failures.join(", ")), true)
+                    let mut m = format!("Restored {} of {}.", count, total);
+                    if !skipped_msg.is_empty() {
+                        m.push_str(&format!("
+
+Skipped (needs admin):
+{}", skipped_msg));
+                    }
+                    if !failures.is_empty() {
+                        m.push_str(&format!("
+
+Failed: {}", failures.join(", ")));
+                    }
+                    (m, failures.len() > 0)
                 };
                 w2.upgrade_in_event_loop(move |a| {
                     a.set_restore_msg(msg.into());

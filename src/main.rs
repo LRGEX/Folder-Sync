@@ -8,6 +8,10 @@ mod gui;
 mod update;
 
 fn main() {
+    // Force software renderer — works on VMs without GPU
+    if std::env::var("SLINT_BACKEND").is_err() {
+        std::env::set_var("SLINT_BACKEND", "software");
+    }
     let args: Vec<String> = std::env::args().collect();
     let mut sync_mode = false;
     let mut auto_restore = false;

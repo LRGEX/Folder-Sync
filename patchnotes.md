@@ -1,10 +1,16 @@
 # Patch Notes — LRGEX Folder Sync
 
+## v1.2.22 — Software Renderer + Static CRT
+- Software renderer: works on VMs without GPU (Hyper-V, VirtualBox, RDP)
+- Static CRT: standalone exe, zero DLL dependencies
+
+
 ## v1.2.21 — Static CRT + Old Task Cleanup
 - Static CRT linking: standalone exe, zero DLL dependencies (fixes VCRUNTIME140.dll error on fresh Windows)
 - Auto-cleanup old VBS scheduled tasks on first launch (fixes sync-runner.vbs not found)
 - One-time marker gate: cleanup scan runs once, never again
 - Schedule fix: MINUTE for <=1439, DAILY for >=1440 (fixes 1442-min interval silent failure)
+
 
 
 ## v1.2.20 — Portable Paths + Health Check + UX Polish
@@ -22,6 +28,7 @@
 - Scrollable folder list for 100+ folders
 - Deselect: click selected folder to toggle off
 - Hover tooltips on action buttons
+
 
 
 
@@ -45,6 +52,7 @@
 
 
 
+
 ## v1.2.18 — Game Lamp + Skip-List + Real-World Tested
 - Game detection lamp per folder (green = game saves detected, cached in config)
 - Column headers in folder list (Path | Game | Auto | Versions)
@@ -58,6 +66,7 @@
 
 
 
+
 ## v1.2.17 — Post-Launch Migration + Research-Backed Detection
 - Migration now fires on GUI launch (background thread, 3s delay, zero UI freeze)
 - No more waiting for sync interval after format — open the app, saves migrate instantly
@@ -66,6 +75,7 @@
 - Save detection patterns expanded from research on 1,460 games (SaveGameExtractor database)
 - Added: saved (116 UE games), saved games (100), savegame (19)
 - Removed: wgs (unreachable in current scanner, UWP paths have no numeric IDs)
+
 
 
 
@@ -87,6 +97,7 @@
 
 
 
+
 ## v1.2.15 — Auto Save-ID Migration
 - **Auto-migrates game saves when numeric user-ID folders change after format/reinstall
 - Detects old folder (has saves) vs new empty folder (game-created) and copies saves over
@@ -98,6 +109,7 @@
 - Sync mutex prevents concurrent sync processes from stacking
 - Temp compression in %TEMP% (outside OneDrive) — 10x faster for large folders
 - PID-based stale progress detection with 10-min mtime backstop
+
 
 
 
@@ -132,6 +144,7 @@
 
 
 
+
 ## v1.2.13
 - Restore progress overlay (impossible to miss)
 - Slint-native input dialog replaces ps_inputbox (no more UI freeze)
@@ -144,8 +157,10 @@
 
 
 
+
 ## v1.2.12
 - Right-click sync shows confirmation dialog after completion (success or failure with error)
+
 
 
 
@@ -167,9 +182,11 @@
 
 
 
+
 ## v1.2.10
 - Version limit: keep last N snapshots instead of 90-day retention (default 5)
 - Tools menu: Set Max Versions... (user-configurable)
+
 
 
 
@@ -189,8 +206,10 @@
 
 
 
+
 ## v1.2.7
 - Cache-buster fix: download URL appends ?v=version (bypasses Cloudflare cache)
+
 
 
 
@@ -202,6 +221,7 @@
 ## v1.2.6
 - Backup Folder button forces compression (no more silent skip)
 - Health bar shows "Compressing [folder]..." during manual compression
+
 
 
 
@@ -224,6 +244,7 @@
 
 
 
+
 ## v1.2.4
 - Replaced self_replace with batch updater (OneDrive-safe: app exits before copy)
 - Copy retry loop in updater batch (handles OneDrive lock)
@@ -237,10 +258,12 @@
 
 
 
+
 ## v1.2.3
 - Click folder in list fills source box (can re-sync by clicking Backup Folder)
 - Equal-width buttons (min-width + stretch)
 - Canonical home registry verified
+
 
 
 
@@ -264,8 +287,10 @@
 
 
 
+
 ## v1.2.1
 - **UI fix**: all 4 bottom buttons equal width (min-width + stretch)
+
 
 
 
@@ -292,6 +317,7 @@
 
 
 
+
 ## v1.1.3
 - **Compression switched to tar+zstd**: 100x faster than LZMA2, same or better ratio. Hermes compresses in seconds, not minutes.
 - **No staging**: compresses directly from source (no robocopy temp copy)
@@ -301,6 +327,7 @@
 - **Health status**: writes immediately on manual sync, not just scheduled cycles
 - **Right-click confirmation**: Yes/No before syncing
 - **Health cache**: 3-second timer restores cached health when progress clears
+
 
 
 
@@ -328,8 +355,10 @@
 
 
 
+
 ## v1.1.1
 - **Uninstall freeze fix**: cleanup runs via detached batch file instead of blocking on UI thread
+
 
 
 
@@ -353,11 +382,13 @@
 
 
 
+
 ## v1.0.8
 - **Auto-update fix**: update.rs rewritten with download validation (size check), proper error dialogs at every step, no more silent failures.
 - **Assets folder**: icons moved to assets/ for cleaner project structure.
 - **Git history purged**: deploy scripts removed from all past commits.
 - **.gitattributes**: silenced CRLF/LF warnings.
+
 
 
 
@@ -378,6 +409,7 @@
 
 
 
+
 ## v1.0.6
 - **Auto-update system**: app checks for updates on launch, downloads and swaps the exe via self-replace, relaunches automatically.
 - **Deploy pipeline**: deploy.ps1 + deploy.bat for one-click build + upload to server + GitHub Releases.
@@ -386,6 +418,7 @@
 - **README rewritten** as marketing copy.
 - **Docs updated** for MSVC, auto-update, and deploy workflow.
 - **Clean build**: 0 warnings.
+
 
 
 
@@ -436,6 +469,7 @@
 
 
 
+
 ## v0.7.0 (PowerShell — superseded by v1.0.0)
 - Default sync interval = 120 min (2 hours).
 - Decoupled right-click from the sync task.
@@ -445,6 +479,7 @@
 - Exclude feature (Manage Exclusions).
 - VBS launcher for invisible background sync.
 - Custom LRGEX icon in right-click context menu.
+
 
 
 

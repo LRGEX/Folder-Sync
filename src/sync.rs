@@ -529,32 +529,6 @@ pub fn restore_snapshot(snapshot_dir: &Path, source: &str) -> (bool, String) {
 /// Delete old VBS-based scheduled tasks from the PowerShell version.
 /// Prevents "cannot find sync-runner.vbs" errors for users upgrading from old version.
 /// Scans every launch on background thread. Catches old VBS tasks from any previous version.
-pub fn cleanup_old_tasks() {
-    use std::process::Command;
-
-    if let Ok(out) = Command::new("schtasks.exe")
-        .args(["/Query", "/FO", "CSV", "/V"])
-        .creation_flags(0x08000000u32)
-        .output()
-    {
-        let csv = String::from_utf8_lossy(&out.stdout);
-        for line in csv.lines() {
-            let lower = line.to_lowercase();
-            if (lower.contains("sync-runner.vbs") || (lower.contains("lrgex") && lower.contains(".vbs")))
-                && !lower.contains("lrgex-foldersync-rust")
-            {
-                if let Some(name) = line.split('"').nth(1) {
-                    let _ = Command::new("schtasks.exe")
-                        .args(["/Delete", "/TN", name, "/F"])
-                        .creation_flags(0x08000000u32)
-                        .output();
-                    crate::synclog::write(&format!("  [CLEANUP] Deleted old task: {}", name));
-                }
-            }
-        }
-    }
-
-}
 pub fn register_sync_task(interval_minutes: i32) -> bool {
     let home = match config::canonical_home() {
         Some(h) => h,

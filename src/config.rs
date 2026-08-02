@@ -159,35 +159,6 @@ pub fn clear_canonical_home() {
     }
 }
 
-pub fn cleanup_legacy_ps() {
-    use std::os::windows::process::CommandExt;
-    use std::process::Command;
-
-    let old_task = Command::new("schtasks.exe")
-        .args(["/Query", "/TN", "LRGEX-FolderSync"])
-        .creation_flags(0x08000000u32)
-        .output();
-    if let Ok(out) = &old_task {
-        if out.status.success() {
-            let _ = Command::new("schtasks.exe")
-                .args(["/Delete", "/TN", "LRGEX-FolderSync", "/F"])
-                .creation_flags(0x08000000u32)
-                .output();
-        }
-    }
-
-    let local_app = std::env::var("LOCALAPPDATA").unwrap_or_default();
-    let vbs_path = std::path::PathBuf::from(&local_app)
-        .join("LRGEX").join("sync-runner.vbs");
-    if vbs_path.exists() {
-        let _ = std::fs::remove_file(&vbs_path);
-    }
-
-    let home_vbs = script_dir().join("sync-runner.vbs");
-    if home_vbs.exists() {
-        let _ = std::fs::remove_file(&home_vbs);
-    }
-}
 
 #[allow(dead_code)]
 pub fn pair_cloud_path(source: &str) -> PathBuf {

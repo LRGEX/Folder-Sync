@@ -18,7 +18,7 @@ pub struct HealthResult {
 }
 
 pub fn status_path() -> PathBuf {
-    crate::config::script_dir().join("sync-status.json")
+    crate::config::data_dir().join("sync-status.json")
 }
 
 pub fn write_status(ok: i32, fail: i32, restored: i32, names: &[String]) {

@@ -621,6 +621,7 @@ use crate::{config, sync, health, synclog};
 
 pub fn run() {
     // Startup sweep: clean up orphaned temp files from killed compressions.
+    config::migrate_to_data_dir();
     // Safe — PID suffix identifies dead processes. Prevents temp pile-up.
     if let Ok(entries) = std::fs::read_dir(std::env::temp_dir()) {
         let current_pid = std::process::id();

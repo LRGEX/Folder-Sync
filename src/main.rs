@@ -43,6 +43,7 @@ fn main() {
             }
             let _ = handle; // keep mutex alive
         }
+        config::migrate_to_data_dir();
         config::ensure_versions_setup();
         sync::sync_all_pairs();
         return;

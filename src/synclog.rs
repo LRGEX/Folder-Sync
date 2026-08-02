@@ -3,7 +3,7 @@ use std::io::Write;
 use std::path::PathBuf;
 
 pub fn log_path() -> PathBuf {
-    crate::config::script_dir().join("sync.log")
+    crate::config::data_dir().join("sync.log")
 }
 
 pub fn timestamp() -> String {
@@ -27,14 +27,14 @@ pub fn write(msg: &str) {
 }
 
 pub fn write_progress(msg: &str) {
-    let path = crate::config::script_dir().join("sync-progress.txt");
+    let path = crate::config::data_dir().join("sync-progress.txt");
     let pid = std::process::id();
     let line = format!("{}|{}", pid, msg);
     let _ = std::fs::write(&path, line);
 }
 
 pub fn read_progress() -> String {
-    let raw = std::fs::read_to_string(crate::config::script_dir().join("sync-progress.txt"))
+    let raw = std::fs::read_to_string(crate::config::data_dir().join("sync-progress.txt"))
         .unwrap_or_default();
     let raw = raw.trim();
     if raw.is_empty() { return String::new(); }
@@ -42,7 +42,7 @@ pub fn read_progress() -> String {
     // Format: PID|message — check BOTH PID liveness AND file mtime (PID reuse backstop)
     if let Some((pid_str, msg)) = raw.split_once('|') {
         if let Ok(pid) = pid_str.parse::<u32>() {
-            let path = crate::config::script_dir().join("sync-progress.txt");
+            let path = crate::config::data_dir().join("sync-progress.txt");
             // mtime backstop: clear if file untouched >10 min (defeats PID reuse)
             let stale = std::fs::metadata(&path)
                 .ok()

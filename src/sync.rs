@@ -503,7 +503,7 @@ pub fn restore_snapshot(snapshot_dir: &Path, source: &str) -> (bool, String) {
 /// One-time: skips if marker file exists. Runs on background thread.
 pub fn cleanup_old_tasks() {
     use std::process::Command;
-    let marker = crate::config::script_dir().join(".legacy-tasks-cleaned");
+    let marker = crate::config::data_dir().join("legacy-cleaned");
     if marker.exists() { return; }
 
     if let Ok(out) = Command::new("schtasks.exe")
@@ -585,15 +585,15 @@ fn should_skip(name: &str) -> bool {
 /// Marker file: set after restore so syncs know to check for new game ID folders.
 /// Auto-expires after 7 days. Cleared after successful migration.
 pub fn set_migration_pending() {
-    let _ = std::fs::write(config::script_dir().join(".migration-pending"), "");
+    let _ = std::fs::write(config::data_dir().join("migration-pending"), "");
 }
 
 pub fn clear_migration_pending() {
-    let _ = std::fs::remove_file(config::script_dir().join(".migration-pending"));
+    let _ = std::fs::remove_file(config::data_dir().join("migration-pending"));
 }
 
 fn migration_pending() -> bool {
-    let marker = config::script_dir().join(".migration-pending");
+    let marker = config::data_dir().join("migration-pending");
     if !marker.exists() { return false; }
     if let Ok(meta) = std::fs::metadata(&marker) {
         if let Ok(mtime) = meta.modified() {
@@ -609,7 +609,7 @@ fn migration_pending() -> bool {
 /// Cheap check (file existence only) for the health timer.
 /// Avoids spawning a thread every 30s when no restore has happened.
 pub fn migration_marker_exists() -> bool {
-    config::script_dir().join(".migration-pending").exists()
+    config::data_dir().join("migration-pending").exists()
 }
 
 /// Shallow-ish check: does this folder contain game saves at any reasonable depth?

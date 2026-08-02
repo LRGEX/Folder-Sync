@@ -46,8 +46,37 @@ pub fn script_dir() -> PathBuf {
     exe.parent().unwrap_or(std::path::Path::new(".")).to_path_buf()
 }
 
+
+/// Internal state directory — keeps saves folder clean.
+pub fn data_dir() -> PathBuf {
+    let d = script_dir().join(".lrgex");
+    let _ = std::fs::create_dir_all(&d);
+    d
+}
+
+/// One-time migration: move scattered root files into .lrgex/
+pub fn migrate_to_data_dir() {
+    let dd = data_dir();
+    let sd = script_dir();
+    let moves = [
+        ("junction-config.json", "junction-config.json"),
+        ("sync.log", "sync.log"),
+        ("sync-progress.txt", "sync-progress.txt"),
+        ("sync-status.json", "sync-status.json"),
+        (".lrgex-home", "home"),
+        (".legacy-tasks-cleaned", "legacy-cleaned"),
+        (".migration-pending", "migration-pending"),
+    ];
+    for (old, new) in &moves {
+        let old_path = sd.join(old);
+        let new_path = dd.join(new);
+        if old_path.exists() && !new_path.exists() {
+            let _ = std::fs::rename(&old_path, &new_path);
+        }
+    }
+}
 pub fn config_path() -> PathBuf {
-    script_dir().join("junction-config.json")
+    data_dir().join("junction-config.json")
 }
 
 pub fn save_config(cfg: &Config) {
@@ -103,7 +132,7 @@ pub fn load_config() -> Config {
 }
 
 pub fn is_home() -> bool {
-    script_dir().join(".lrgex-home").exists()
+    data_dir().join("home").exists()
 }
 
 const REG_PATH: &str = r"SOFTWARErgexfoldersync";

@@ -8,7 +8,7 @@ pub fn log_path() -> PathBuf {
 
 pub fn timestamp() -> String {
     use chrono::Local;
-    Local::now().format("%Y-%m-%d %H:%M:%S").to_string()
+    Local::now().format("%Y-%m-%d %I:%M:%S %p").to_string()
 }
 
 pub fn write(msg: &str) {

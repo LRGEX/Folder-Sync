@@ -494,9 +494,15 @@ pub fn restore_snapshot(snapshot_dir: &Path, source: &str) -> (bool, String) {
 /// This prevents stray copies from retargeting the task.
 
 /// Delete old VBS-based scheduled tasks from the PowerShell version.
+
+/// Delete old VBS-based scheduled tasks from the PowerShell version.
 /// Prevents "cannot find sync-runner.vbs" errors for users upgrading from old version.
+/// One-time: skips if marker file exists. Runs on background thread.
 pub fn cleanup_old_tasks() {
     use std::process::Command;
+    let marker = crate::config::script_dir().join(".legacy-tasks-cleaned");
+    if marker.exists() { return; }
+
     if let Ok(out) = Command::new("schtasks.exe")
         .args(["/Query", "/FO", "CSV", "/V"])
         .creation_flags(0x08000000u32)
@@ -518,6 +524,9 @@ pub fn cleanup_old_tasks() {
             }
         }
     }
+
+    // Write marker — never scan again
+    let _ = std::fs::write(&marker, "1");
 }
 pub fn register_sync_task(interval_minutes: i32) -> bool {
     let home = match config::canonical_home() {

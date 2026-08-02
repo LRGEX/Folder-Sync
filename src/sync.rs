@@ -2,6 +2,8 @@ use crate::config;
 use std::os::windows::process::CommandExt;
 use std::path::Path;
 use std::process::Command;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, AtomicBool, Ordering};
 
 pub fn is_dir_empty(path: &str) -> bool {
     match std::fs::read_dir(path) {
@@ -81,60 +83,87 @@ fn add_to_tar<W: std::io::Write>(
 /// Only on FULL success: merge into destination (overwrite existing).
 /// On ANY failure: discard temp, destination completely untouched.
 /// This guarantees no partial restores — ever.
+
+/// Wrapper that counts bytes read for progress tracking
+struct CountingReader {
+    inner: std::fs::File,
+    counter: Arc<AtomicU64>,
+}
+
+impl std::io::Read for CountingReader {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        let n = self.inner.read(buf)?;
+        self.counter.fetch_add(n as u64, Ordering::Relaxed);
+        Ok(n)
+    }
+}
+
 pub fn decompress_archive(archive: &Path, dest: &Path) -> (bool, String) {
     let _ = std::fs::create_dir_all(dest);
-
-    // Temp dir in the SAME parent (so rename is fast, same filesystem)
     let temp_dir = dest.parent().unwrap_or(std::path::Path::new("."))
         .join(format!(".lrgex_restore_{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&temp_dir);
     let _ = std::fs::create_dir_all(&temp_dir);
 
     let arch_size = std::fs::metadata(archive).map(|m| m.len()).unwrap_or(0);
-    crate::synclog::write(&format!("  [DECOMPRESS] {} — archive={} dest={} size={} bytes", archive.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default(), archive.display(), dest.display(), arch_size));
+    let leaf_name = archive.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+    crate::synclog::write(&format!("  [DECOMPRESS] {} size={} bytes", leaf_name, arch_size));
+
     let file = match std::fs::File::open(archive) {
         Ok(f) => f,
         Err(e) => { let _ = std::fs::remove_dir_all(&temp_dir); return (false, format!("cannot open archive: {}", e)); }
     };
-    let decoder = match zstd::Decoder::new(file) {
+
+    let bytes_read = Arc::new(AtomicU64::new(0));
+    let counting_file = CountingReader { inner: file, counter: bytes_read.clone() };
+
+    let decoder = match zstd::Decoder::new(counting_file) {
         Ok(d) => d,
         Err(e) => { let _ = std::fs::remove_dir_all(&temp_dir); return (false, format!("corrupt archive (zstd): {}", e)); }
     };
     let mut tar = tar::Archive::new(decoder);
 
+    let stop = Arc::new(AtomicBool::new(false));
+    let stop_clone = stop.clone();
+    let bytes_clone = bytes_read.clone();
+    let total = arch_size;
+    let leaf_clone = leaf_name.clone();
+    std::thread::spawn(move || {
+        while !stop_clone.load(Ordering::Relaxed) {
+            let read = bytes_clone.load(Ordering::Relaxed);
+            let pct = if total > 0 { (read * 100 / total).min(100) } else { 0 };
+            let read_mb = read as f64 / 1048576.0;
+            let total_mb = total as f64 / 1048576.0;
+            crate::synclog::write_progress(&format!("Decompressing {} - {:.0}/{:.0} MB ({}%)", leaf_clone, read_mb, total_mb, pct));
+            std::thread::sleep(std::time::Duration::from_secs(1));
+        }
+    });
+
     match tar.unpack(&temp_dir) {
         Ok(_) => {
-            let ec = std::fs::read_dir(&temp_dir).map(|d| d.count()).unwrap_or(0); crate::synclog::write(&format!("  [DECOMPRESS] unpack OK — {} entries in temp, {} bytes archive", ec, arch_size));
-            // Full success — atomic rename-swap:
-            // 1. Rename dest → dest.lrgex_bak
-            // 2. Rename temp → dest
-            // 3. Remove dest.lrgex_bak
-            // If step 2 fails, roll back. Destination is never half-written.
+            stop.store(true, Ordering::Relaxed);
+            crate::synclog::write_progress("");
+            let ec = std::fs::read_dir(&temp_dir).map(|d| d.count()).unwrap_or(0);
+            crate::synclog::write(&format!("  [DECOMPRESS] unpack OK - {} entries, {} bytes archive", ec, arch_size));
             let backup_name = dest.with_extension("lrgex_bak");
             let _ = std::fs::remove_dir_all(&backup_name);
-
             if dest.exists() {
                 if std::fs::rename(dest, &backup_name).is_err() {
                     let _ = std::fs::remove_dir_all(&temp_dir);
                     return (false, "cannot swap destination (locked?)".into());
                 }
             }
-
             if let Err(e) = std::fs::rename(&temp_dir, dest) {
-                // Roll back: restore original destination
-                if backup_name.exists() {
-                    let _ = std::fs::rename(&backup_name, dest);
-                }
+                if backup_name.exists() { let _ = std::fs::rename(&backup_name, dest); }
                 let _ = std::fs::remove_dir_all(&temp_dir);
                 return (false, format!("swap failed: {}", e));
             }
-
-            // Success — clean up old data
             let _ = std::fs::remove_dir_all(&backup_name);
             (true, String::new())
         }
         Err(e) => {
-            // FAILURE — discard temp, destination COMPLETELY UNTOUCHED
+            stop.store(true, Ordering::Relaxed);
+            crate::synclog::write_progress("");
             let _ = std::fs::remove_dir_all(&temp_dir);
             (false, format!("extract failed: {}", e))
         }

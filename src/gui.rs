@@ -874,7 +874,21 @@ pub fn run() {
                         .map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
                     let prog = format!("Decompressing {} ({} of {})...", leaf, i + 1, total);
                     w2.upgrade_in_event_loop(move |a| { a.set_restore_msg(prog.into()); }).ok();
+                    let stop_hb = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+                    let stop_hb2 = stop_hb.clone();
+                    let w3 = w2.clone();
+                    std::thread::spawn(move || {
+                        while !stop_hb2.load(std::sync::atomic::Ordering::Relaxed) {
+                            let p = crate::synclog::read_progress();
+                            if !p.is_empty() {
+                                let p2 = p.clone();
+                                w3.upgrade_in_event_loop(move |a| { a.set_restore_msg(p2.into()); }).ok();
+                            }
+                            std::thread::sleep(std::time::Duration::from_millis(500));
+                        }
+                    });
                     let (ok, reason) = sync::restore_pair_from_cloud(source);
+                    stop_hb.store(true, std::sync::atomic::Ordering::Relaxed);
                     crate::synclog::write(&format!("  [RESTORE] {} — {} — {}", if ok { "OK" } else { "FAIL" }, leaf, reason));
                     if ok { count += 1; }
                     else { failures.push(format!("{}: {}", leaf, reason)); }

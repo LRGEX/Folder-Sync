@@ -1,14 +1,14 @@
-//! Release signer — signs the exe with the private key during deploy.
-//! Called by deploy.ps1: `cargo run --bin sign -- <exe_path>`
-//! Outputs a 128-char hex Ed25519 signature for latest.json.
+//! Release signer - signs the exe with the private key during deploy.
+//! SAFETY: verifies private key matches the public key anchor (signing.pub) BEFORE signing.
 
 use ed25519_dalek::{Signer, SigningKey};
 use std::io::Read;
 
+const PUBKEY_ANCHOR: &str = include_str!("../signing.pub");
+
 fn main() {
     let exe_path = std::env::args().nth(1).expect("Usage: sign <exe_path>");
 
-    // Load private key from secure location
     let root = format!("E:{}", std::path::MAIN_SEPARATOR);
     let key_path = std::path::PathBuf::from(root)
         .join("LRG").join("LRG Data Cloud").join("L.R.G")
@@ -22,7 +22,17 @@ fn main() {
     secret.copy_from_slice(&priv_bytes);
     let signing_key = SigningKey::from_bytes(&secret);
 
-    // Read exe bytes and sign
+    let derived_pubkey = hex::encode(signing_key.verifying_key().to_bytes());
+    let expected_pubkey = PUBKEY_ANCHOR.trim();
+    if derived_pubkey != expected_pubkey {
+        eprintln!("FATAL: Key mismatch!");
+        eprintln!("  Private key derives to: {}", derived_pubkey);
+        eprintln!("  Anchor (signing.pub):   {}", expected_pubkey);
+        eprintln!("  Updates will be REJECTED by all clients.");
+        eprintln!("  Fix: restore the correct private key.");
+        std::process::exit(1);
+    }
+
     let mut file = std::fs::File::open(&exe_path).expect("Cannot open exe");
     let mut data = Vec::new();
     file.read_to_end(&mut data).expect("Cannot read exe");

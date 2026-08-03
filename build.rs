@@ -4,4 +4,5 @@ fn main() {
         res.set_icon("assets/app-icon.ico");
         let _ = res.compile();
     }
+    println!("cargo:rerun-if-changed=signing.pub");
 }

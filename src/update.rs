@@ -4,9 +4,9 @@ use ed25519_dalek::{VerifyingKey, Verifier, Signature};
 
 const MANIFEST_URL: &str = "https://download.lrgex.com/app/rst/folder-sync/latest.json";
 
-// Public key baked into the binary — generated on dev PC, private key never leaves.
-// Attacker cannot forge updates without the private key, even with full server access.
-const UPDATE_PUBKEY_HEX: &str = "8f4e8831f8038819b4473644a7992b6ee825e562bc9cdb33b15af4ddb849f375";
+// Public key from the immutable anchor file (signing.pub).
+// This is the ONE source of truth — derived from the private key, committed to git.
+const UPDATE_PUBKEY_HEX: &str = include_str!("../signing.pub");
 
 #[derive(Deserialize)]
 struct Manifest {
@@ -78,11 +78,11 @@ pub fn check_for_updates() {
         return;
     }
 
-    // Verify Ed25519 signature against embedded public key
+    // Verify Ed25519 signature against the public key from signing.pub
     if let Some(sig_hex) = &manifest.platforms.windows.signature {
         if !sig_hex.is_empty() {
             match verify_signature(&data, sig_hex) {
-                Ok(()) => {} // Verified — proceed
+                Ok(()) => {}
                 Err(e) => {
                     show_error(&format!(
                         "Signature verification FAILED.\n\n{}\n\nThe download may be corrupted or tampered with. Update aborted for your safety.",
@@ -92,13 +92,11 @@ pub fn check_for_updates() {
                 }
             }
         } else {
-            // Signature field exists but is empty — reject for safety
-            show_error("Signature is EMPTY in the manifest. Update aborted — cannot verify authenticity.");
+            show_error("Signature is EMPTY. Update aborted.");
             return;
         }
     } else {
-        // No signature field at all — reject for safety
-        show_error("No signature found in manifest. Update aborted — cannot verify authenticity.");
+        show_error("No signature in manifest. Update aborted.");
         return;
     }
 
@@ -133,7 +131,8 @@ pub fn check_for_updates() {
 }
 
 fn verify_signature(data: &[u8], sig_hex: &str) -> Result<(), String> {
-    let pub_bytes = hex::decode(UPDATE_PUBKEY_HEX).map_err(|e| format!("Bad public key: {}", e))?;
+    let pub_hex = UPDATE_PUBKEY_HEX.trim();
+    let pub_bytes = hex::decode(pub_hex).map_err(|e| format!("Bad public key: {}", e))?;
     let mut pub_arr = [0u8; 32];
     pub_arr.copy_from_slice(&pub_bytes);
     let verifying_key = VerifyingKey::from_bytes(&pub_arr).map_err(|e| format!("Bad public key: {}", e))?;

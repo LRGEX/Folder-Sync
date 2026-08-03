@@ -4,7 +4,7 @@
 
 # Folder Sync
 
-**Version 1.2.24**
+**Version 1.2.25**
 
 **Automatic folder backup, versioning, and restore after a Windows reinstall.**
 

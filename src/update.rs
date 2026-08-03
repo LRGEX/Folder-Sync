@@ -1,11 +1,13 @@
 use serde::Deserialize;
 use std::io::Read;
+use sha2::{Sha256, Digest};
 
 const MANIFEST_URL: &str = "https://download.lrgex.com/app/rst/folder-sync/latest.json";
 
 #[derive(Deserialize)]
 struct Manifest {
     version: String,
+    signature: Option<String>,
     platforms: Platforms,
 }
 
@@ -54,7 +56,7 @@ pub fn check_for_updates() {
     // Download
     let temp_exe = std::env::temp_dir().join("folder_sync_update.exe");
 
-    let resp = match ureq::get(&format!("{}?v={}", manifest.platforms.windows.url, manifest.version)).call() {
+    let resp = match ureq::get(&format!("{}?v={}", manifest.platforms.windows.url, manifest.version)).timeout(std::time::Duration::from_secs(120)).call() {
         Ok(r) => r,
         Err(e) => { show_error(&format!("Download failed: {}", e)); return; }
     };
@@ -69,6 +71,22 @@ pub fn check_for_updates() {
     if data.len() < 1_000_000 {
         show_error(&format!("Downloaded file too small: {} bytes.", data.len()));
         return;
+    }
+
+    // Verify SHA256 checksum if manifest provides one
+    if let Some(expected_hash) = &manifest.signature {
+        if !expected_hash.is_empty() {
+            let mut hasher = Sha256::new();
+            hasher.update(&data);
+            let actual_hash = hex::encode(hasher.finalize());
+            if !actual_hash.eq_ignore_ascii_case(expected_hash) {
+                show_error(&format!(
+                    "Checksum verification FAILED.\n\nExpected: {}\nGot: {}\n\nThe download may be corrupted or tampered with. Update aborted for your safety.",
+                    expected_hash, actual_hash
+                ));
+                return;
+            }
+        }
     }
 
     match std::fs::write(&temp_exe, &data) {
@@ -87,14 +105,12 @@ pub fn check_for_updates() {
     );
     let _ = std::fs::write(&bat_path, bat);
 
-    // Show confirmation
     rfd::MessageDialog::new()
         .set_title("Updating")
-        .set_description("The app will restart in a moment with the new version.")
+        .set_description("SHA-256 verified. The app will restart in a moment with the new version.")
         .set_buttons(rfd::MessageButtons::Ok)
         .show();
 
-    // Launch updater batch detached, then exit
     use std::os::windows::process::CommandExt;
     let _ = std::process::Command::new("cmd.exe")
         .args(["/c", bat_path.to_str().unwrap_or("")])

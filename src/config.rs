@@ -48,6 +48,9 @@ pub fn script_dir() -> PathBuf {
 
 
 /// Internal state directory — keeps saves folder clean.
+/// Internal state directory — all config/log/marker files live here.
+/// Keeps the saves folder clean: only exe, backup/, and _versions/ visible.
+/// Hidden folder (.lrgex), auto-created on first access.
 pub fn data_dir() -> PathBuf {
     let d = script_dir().join(".lrgex");
     let _ = std::fs::create_dir_all(&d);
@@ -55,6 +58,8 @@ pub fn data_dir() -> PathBuf {
 }
 
 /// One-time migration: move scattered root files into .lrgex/
+/// One-time migration: move scattered root files into .lrgex/ subfolder.
+/// Runs on every launch — idempotent (only moves files that exist at root).
 pub fn migrate_to_data_dir() {
     let dd = data_dir();
     let sd = script_dir();
@@ -79,6 +84,9 @@ pub fn config_path() -> PathBuf {
     data_dir().join("junction-config.json")
 }
 
+/// Save config with path contraction.
+/// Converts absolute paths to portable form (%USERPROFILE%, %LOCALAPPDATA%, etc.)
+/// so the config works on any machine regardless of username.
 pub fn save_config(cfg: &Config) {
     let path = config_path();
     let mut cfg = cfg.clone();
@@ -90,6 +98,10 @@ pub fn save_config(cfg: &Config) {
     }
 }
 
+/// Load config with path expansion and healing.
+/// 1. Expand portable paths (%USERPROFILE%, %LOCALAPPDATA%, etc.) to absolute
+/// 2. Heal broken paths (different username after format → current user)
+/// 3. Auto-migrate absolute paths to portable format on save
 pub fn load_config() -> Config {
     let path = config_path();
     let raw = match std::fs::read_to_string(&path) {

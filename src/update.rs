@@ -6,7 +6,7 @@ const MANIFEST_URL: &str = "https://download.lrgex.com/app/rst/folder-sync/lates
 
 // Public key baked into the binary — generated on dev PC, private key never leaves.
 // Attacker cannot forge updates without the private key, even with full server access.
-const UPDATE_PUBKEY_HEX: &str = "3fc0b486a68aa1a79d94709ebf87b4fd36643a6c0c85fcf4a610f5a9e52c1fe7";
+const UPDATE_PUBKEY_HEX: &str = "8f4e8831f8038819b4473644a7992b6ee825e562bc9cdb33b15af4ddb849f375";
 
 #[derive(Deserialize)]
 struct Manifest {

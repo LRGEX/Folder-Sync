@@ -613,3 +613,7 @@
 ## v0.6.x — v0.5.0 (PowerShell — archived)
 See git history for details. These versions used Windows Forms + PowerShell + copy-only (/E) sync without versioning.
 
+## v1.2.26 — Key Rotation + Security Hardening
+- Rotated Ed25519 signing keypair (old key path was exposed)
+- New public key baked into exe
+- Old exe users must manually update once

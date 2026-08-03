@@ -7,7 +7,7 @@ fn main() {
     let signing_key = SigningKey::from_bytes(&secret);
     let verifying_key: VerifyingKey = signing_key.verifying_key();
 
-    let key_dir = std::path::PathBuf::from("E:")
+    let root = format!("E:{}", std::path::MAIN_SEPARATOR); let key_dir = std::path::PathBuf::from(root)
         .join("LRG").join("LRG Data Cloud").join("L.R.G")
         .join("Devoloping").join("Coding").join("Security keys")
         .join("RUST").join("LRGEX-sync").join("keys");

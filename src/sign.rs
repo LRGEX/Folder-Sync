@@ -4,7 +4,8 @@ use std::io::Read;
 fn main() {
     let exe_path = std::env::args().nth(1).expect("Usage: sign <exe_path>");
 
-    let key_path = std::path::PathBuf::from("E:")
+    let root = format!("E:{}", std::path::MAIN_SEPARATOR);
+    let key_path = std::path::PathBuf::from(root)
         .join("LRG").join("LRG Data Cloud").join("L.R.G")
         .join("Devoloping").join("Coding").join("Security keys")
         .join("RUST").join("LRGEX-sync").join("keys").join("signing.key");

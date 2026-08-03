@@ -1,7 +1,7 @@
 # Troubleshooting
 
 ## "sync-runner.vbs not found"
-You have an old scheduled task from the PowerShell version. Delete it:
+You have an old scheduled task from a previous version. Find and delete it:
 ```
 schtasks /Delete /TN "LRGEX-FolderSync" /F
 ```

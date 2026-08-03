@@ -11,7 +11,6 @@ const UPDATE_PUBKEY_HEX: &str = "8f4e8831f8038819b4473644a7992b6ee825e562bc9cdb3
 #[derive(Deserialize)]
 struct Manifest {
     version: String,
-    signature: Option<String>,
     platforms: Platforms,
 }
 
@@ -24,6 +23,7 @@ struct Platforms {
 #[derive(Deserialize)]
 struct Platform {
     url: String,
+    signature: Option<String>,
 }
 
 pub fn check_for_updates() {
@@ -79,7 +79,7 @@ pub fn check_for_updates() {
     }
 
     // Verify Ed25519 signature against embedded public key
-    if let Some(sig_hex) = &manifest.signature {
+    if let Some(sig_hex) = &manifest.platforms.windows.signature {
         if !sig_hex.is_empty() {
             match verify_signature(&data, sig_hex) {
                 Ok(()) => {} // Verified — proceed
@@ -91,7 +91,15 @@ pub fn check_for_updates() {
                     return;
                 }
             }
+        } else {
+            // Signature field exists but is empty — reject for safety
+            show_error("Signature is EMPTY in the manifest. Update aborted — cannot verify authenticity.");
+            return;
         }
+    } else {
+        // No signature field at all — reject for safety
+        show_error("No signature found in manifest. Update aborted — cannot verify authenticity.");
+        return;
     }
 
     match std::fs::write(&temp_exe, &data) {

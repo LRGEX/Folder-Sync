@@ -5,7 +5,6 @@
 - Auto-verify signature on every update — blocks tampered downloads
 - Fail-fast deploy: aborts if signature is invalid
 - Code documentation: all key functions documented for contributors
-- Key location: E:Security keysRUSTLRGEX-synckeys (cloud-backed)
 
 
 ## v1.2.24 — Cleanup + AM/PM

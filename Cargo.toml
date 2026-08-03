@@ -1,6 +1,6 @@
 [package]
 name = "folder_sync"
-version = "1.2.27"
+version = "1.2.28"
 edition = "2021"
 
 [[bin]]

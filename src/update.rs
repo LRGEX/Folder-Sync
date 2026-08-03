@@ -1,8 +1,12 @@
 use serde::Deserialize;
 use std::io::Read;
-use sha2::{Sha256, Digest};
+use ed25519_dalek::{VerifyingKey, Verifier, Signature};
 
 const MANIFEST_URL: &str = "https://download.lrgex.com/app/rst/folder-sync/latest.json";
+
+// Public key baked into the binary — generated on dev PC, private key never leaves.
+// Attacker cannot forge updates without the private key, even with full server access.
+const UPDATE_PUBKEY_HEX: &str = "3fc0b486a68aa1a79d94709ebf87b4fd36643a6c0c85fcf4a610f5a9e52c1fe7";
 
 #[derive(Deserialize)]
 struct Manifest {
@@ -53,10 +57,11 @@ pub fn check_for_updates() {
         return;
     }
 
-    // Download
     let temp_exe = std::env::temp_dir().join("folder_sync_update.exe");
 
-    let resp = match ureq::get(&format!("{}?v={}", manifest.platforms.windows.url, manifest.version)).timeout(std::time::Duration::from_secs(120)).call() {
+    let resp = match ureq::get(&format!("{}?v={}", manifest.platforms.windows.url, manifest.version))
+        .timeout(std::time::Duration::from_secs(120))
+        .call() {
         Ok(r) => r,
         Err(e) => { show_error(&format!("Download failed: {}", e)); return; }
     };
@@ -73,18 +78,18 @@ pub fn check_for_updates() {
         return;
     }
 
-    // Verify SHA256 checksum if manifest provides one
-    if let Some(expected_hash) = &manifest.signature {
-        if !expected_hash.is_empty() {
-            let mut hasher = Sha256::new();
-            hasher.update(&data);
-            let actual_hash = hex::encode(hasher.finalize());
-            if !actual_hash.eq_ignore_ascii_case(expected_hash) {
-                show_error(&format!(
-                    "Checksum verification FAILED.\n\nExpected: {}\nGot: {}\n\nThe download may be corrupted or tampered with. Update aborted for your safety.",
-                    expected_hash, actual_hash
-                ));
-                return;
+    // Verify Ed25519 signature against embedded public key
+    if let Some(sig_hex) = &manifest.signature {
+        if !sig_hex.is_empty() {
+            match verify_signature(&data, sig_hex) {
+                Ok(()) => {} // Verified — proceed
+                Err(e) => {
+                    show_error(&format!(
+                        "Signature verification FAILED.\n\n{}\n\nThe download may be corrupted or tampered with. Update aborted for your safety.",
+                        e
+                    ));
+                    return;
+                }
             }
         }
     }
@@ -94,7 +99,6 @@ pub fn check_for_updates() {
         Err(e) => { show_error(&format!("Save failed: {}", e)); return; }
     }
 
-    // Write updater batch — copies new exe AFTER app exits (OneDrive-safe)
     let bat_path = std::env::temp_dir().join("lrgex-updater.bat");
     let bat = format!(
         "@echo off\r\nping 127.0.0.1 -n 3 > nul\r\n:retry\r\ncopy /Y \"{}\" \"{}\" >nul 2>&1\r\nif errorlevel 1 (\r\n  ping 127.0.0.1 -n 3 > nul\r\n  goto retry\r\n)\r\ndel \"{}\" >nul 2>&1\r\nstart \"\" \"{}\"\r\ndel \"%~f0\"\r\n",
@@ -107,7 +111,7 @@ pub fn check_for_updates() {
 
     rfd::MessageDialog::new()
         .set_title("Updating")
-        .set_description("SHA-256 verified. The app will restart in a moment with the new version.")
+        .set_description("Signature verified. The app will restart in a moment with the new version.")
         .set_buttons(rfd::MessageButtons::Ok)
         .show();
 
@@ -118,6 +122,20 @@ pub fn check_for_updates() {
         .spawn();
 
     std::process::exit(0);
+}
+
+fn verify_signature(data: &[u8], sig_hex: &str) -> Result<(), String> {
+    let pub_bytes = hex::decode(UPDATE_PUBKEY_HEX).map_err(|e| format!("Bad public key: {}", e))?;
+    let mut pub_arr = [0u8; 32];
+    pub_arr.copy_from_slice(&pub_bytes);
+    let verifying_key = VerifyingKey::from_bytes(&pub_arr).map_err(|e| format!("Bad public key: {}", e))?;
+
+    let sig_bytes = hex::decode(sig_hex).map_err(|e| format!("Bad signature format: {}", e))?;
+    let mut sig_arr = [0u8; 64];
+    sig_arr.copy_from_slice(&sig_bytes);
+    let signature = Signature::from_bytes(&sig_arr);
+
+    verifying_key.verify(data, &signature).map_err(|e| format!("Invalid signature: {}", e))
 }
 
 fn show_error(msg: &str) {

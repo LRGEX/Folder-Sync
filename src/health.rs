@@ -67,8 +67,8 @@ pub fn get_health() -> HealthResult {
     if !task_exists() {
         return HealthResult {
             status: "RED".into(),
-            label: "SYNC OFF".into(),
-            reason: "Task not registered - it will be recreated on next launch".into(),
+            label: "Protection off".into(),
+            reason: "Will resume on next launch".into(),
         };
     }
 
@@ -76,8 +76,8 @@ pub fn get_health() -> HealthResult {
     if task_running() {
         return HealthResult {
             status: "AMBER".into(),
-            label: "SYNCING".into(),
-            reason: "Running now".into(),
+            label: "Protecting".into(),
+            reason: "Backing up your folders".into(),
         };
     }
 
@@ -88,21 +88,21 @@ pub fn get_health() -> HealthResult {
                 if s.fail > 0 {
                     return HealthResult {
                         status: "RED".into(),
-                        label: "SYNC HAD FAILURES".into(),
+                        label: "Needs attention".into(),
                         reason: format!("{} folder(s) failed", s.fail),
                     };
                 }
                 if s.restored > 0 {
                     return HealthResult {
                         status: "GREEN".into(),
-                        label: format!("RESTORED {}", s.restored).into(),
+                        label: format!("Restored {}", s.restored).into(),
                         reason: format!("auto-restored: {}", s.restored_names),
                     };
                 }
                 return HealthResult {
                     status: "GREEN".into(),
-                    label: "SYNC OK".into(),
-                    reason: format!("{} folder(s) OK - last: {}", s.ok, s.last_sync),
+                    label: "All protected".into(),
+                    reason: format!("{} folder(s) - last: {}", s.ok, s.last_sync),
                 };
             }
         }
@@ -112,7 +112,7 @@ pub fn get_health() -> HealthResult {
     // 4. Task registered but hasn't run yet = AMBER (not green!)
     HealthResult {
         status: "AMBER".into(),
-        label: "WAITING".into(),
-        reason: "Task registered, waiting for first sync cycle".into(),
+        label: "Starting up".into(),
+        reason: "Preparing your first backup".into(),
     }
 }

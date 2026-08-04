@@ -5,6 +5,7 @@ slint::slint! {
 
     export struct FolderEntry {
         path: string,
+        name: string,
         auto_restore: string,
         is_game: bool,
     }
@@ -136,6 +137,10 @@ slint::slint! {
                 alignment: center;
                 Text { text: "v" + root.app-version; font-size: 11px; color: #888; }
             }
+            HorizontalLayout {
+                alignment: center;
+                Text { text: "Your folders, safe across reinstalls"; font-size: 11px; color: #777; }
+            }
 
             // Health lamp
             Rectangle {
@@ -153,7 +158,7 @@ slint::slint! {
             HorizontalBox {
                 spacing: 6px;
                 LineEdit {
-                    placeholder-text: "Folder to backup...";
+                    placeholder-text: "Folder to protect...";
                     text <=> root.source-text;
                     width: 440px;
                 }
@@ -161,13 +166,13 @@ slint::slint! {
             }
 
             // Backed up folders list (right under source input, shows full paths)
-            Text { text: "Backed up folders:"; color: #aaa; font-size: 12px; }
+            Text { text: root.folders.length > 0 ? "✓ " + root.folders.length + " folders protected" : "No folders protected yet"; color: root.folders.length > 0 ? #4caf50 : #888; font-size: 12px; font-weight: 700; }
 
             // Column headers
             HorizontalLayout {
                 height: 18px;
                 spacing: 0px;
-                Text { text: "Path"; color: #777; font-size: 9px; vertical-alignment: center; horizontal-stretch: 1; }
+                Text { text: "Folder"; color: #777; font-size: 9px; vertical-alignment: center; horizontal-stretch: 1; }
                 Text { text: "Game"; color: #777; font-size: 9px; vertical-alignment: center; horizontal-alignment: center; width: 34px; }
                 Text { text: "Auto"; color: #777; font-size: 9px; vertical-alignment: center; horizontal-alignment: center; width: 30px; }
                 Text { text: "Versions"; color: #777; font-size: 9px; vertical-alignment: center; horizontal-alignment: center; width: 68px; }
@@ -178,7 +183,7 @@ slint::slint! {
                 min-height: 200px;
                 VerticalBox {
                     for entry[i] in root.folders : Rectangle {
-                        height: 28px;
+                        height: 38px;
                         background: i == root.selected-index ? #2d2d2d : #252525;
                         // Left accent bar (orange when selected, invisible otherwise)
                         Rectangle {
@@ -189,12 +194,22 @@ slint::slint! {
                         }
                         TouchArea { clicked => { root.selected-index = root.selected-index == i ? -1 : i; root.source-text = root.selected-index == i ? entry.path : ""; } }
                         HorizontalLayout {
-                            Text {
-                                text: entry.path;
-                                color: i == root.selected-index ? #cb803c : #f0f0f0;
-                                vertical-alignment: center;
+                            VerticalLayout {
                                 horizontal-stretch: 1;
-                                overflow: elide;
+                                alignment: center;
+                                spacing: 1px;
+                                Text {
+                                    text: entry.name;
+                                    color: i == root.selected-index ? #cb803c : #f0f0f0;
+                                    font-size: 13px;
+                                    overflow: elide;
+                                }
+                                Text {
+                                    text: entry.path;
+                                    color: #777;
+                                    font-size: 9px;
+                                    overflow: elide;
+                                }
                             }
                             // Game lamp: green if game saves detected, dark otherwise
                             Rectangle {
@@ -236,26 +251,26 @@ slint::slint! {
                     horizontal-stretch: 1; min-width: 250px; height: 32px;
                     background: bk-hover.has-hover ? #3a3a3a : #2d2d2d;
                     border-radius: 4px;
-                    Text { text: "Backup Folder"; color: #cb803c; horizontal-alignment: center; vertical-alignment: center; font-weight: 700; }
+                    Text { text: "Protect Folder"; color: #cb803c; horizontal-alignment: center; vertical-alignment: center; font-weight: 700; }
                     bk-hover := TouchArea { clicked => { root.link-clicked(); } }
                     // Tooltip on hover
                     if bk-hover.has-hover : Rectangle {
                         y: -28px; x: 0px; width: 220px; height: 22px;
                         background: #111;
                         border-radius: 3px; border-width: 1px; border-color: #555;
-                        Text { text: "Compress and store the selected folder"; color: #ccc; font-size: 10px; horizontal-alignment: center; vertical-alignment: center; }
+                        Text { text: "Protect this folder now"; color: #ccc; font-size: 10px; horizontal-alignment: center; vertical-alignment: center; }
                     }
                 }
                 Rectangle {
                     horizontal-stretch: 1; min-width: 250px; height: 32px;
                     background: rs-hover.has-hover ? #3a3a3a : #2d2d2d;
                     border-radius: 4px;
-                    Text { text: "Restore Folder"; color: #cb803c; horizontal-alignment: center; vertical-alignment: center; font-weight: 700; }
+                    Text { text: "Restore Now"; color: #cb803c; horizontal-alignment: center; vertical-alignment: center; font-weight: 700; }
                     rs-hover := TouchArea { clicked => { root.restore-clicked(); } }
                     if rs-hover.has-hover : Rectangle {
                         y: -28px; x: 0px; width: 220px; height: 22px;
                         background: #111; border-radius: 3px; border-width: 1px; border-color: #555;
-                        Text { text: "Decompress backup back to original location"; color: #ccc; font-size: 10px; horizontal-alignment: center; vertical-alignment: center; }
+                        Text { text: "Restore this folder from your backup"; color: #ccc; font-size: 10px; horizontal-alignment: center; vertical-alignment: center; }
                     }
                 }
             }
@@ -1723,8 +1738,12 @@ fn refresh_folders(app: &App) {
             }
             detected
         };
+        let leaf = std::path::Path::new(&j.source_path)
+            .file_name().map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_else(|| j.source_path.clone());
         FolderEntry {
             path: j.source_path.clone().into(),
+            name: leaf.into(),
             auto_restore: if j.auto_restore { "ON" } else { "OFF" }.into(),
             is_game,
         }

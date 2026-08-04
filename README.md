@@ -31,7 +31,7 @@ You know the feeling.
 
 Windows is fresh. Your apps are reinstalled. Then you launch your favorite game...
 
-**Your saves are gone.**
+**Your saves are gone, or important folders is gone!**
 
 Your application settings? **Gone.**
 

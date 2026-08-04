@@ -1680,7 +1680,7 @@ RECOMMENDED: a folder inside a cloud service (OneDrive, Google Drive, etc.) so y
         .show();
 
     let home = rfd::FileDialog::new()
-        .set_title("Select LRGEX sync folder")
+        .set_title("Select LRGEX Restore folder")
         .pick_folder();
 
     if let Some(home) = home {

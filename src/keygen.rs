@@ -11,7 +11,7 @@ fn main() {
     let key_dir = std::path::PathBuf::from(root)
         .join("LRG").join("LRG Data Cloud").join("L.R.G")
         .join("Devoloping").join("Coding").join("Security keys")
-        .join("RUST").join("LRGEX-sync").join("keys");
+        .join("RUST").join("LRGEX-Restore").join("keys");
     let _ = std::fs::create_dir_all(&key_dir);
     let key_path = key_dir.join("signing.key");
     let pub_path = std::path::PathBuf::from(".").join("signing.pub");

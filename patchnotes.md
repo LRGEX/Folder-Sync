@@ -1,4 +1,12 @@
-# Patch Notes — LRGEX Folder Sync
+# Patch Notes — LRGEX Restore
+
+## v1.2.30 — Renamed to LRGEX Restore
+- Project renamed to LRGEX Restore
+- New exe name: `LRGEXRestore.exe`
+- New registry path, scheduled task name, and right-click menu entry
+- New update server path: download.lrgex.com/app/rst/lrgex-restore
+- GitHub repo: github.com/LRGEX/Restore
+- Existing users: in the OLD app use Tools → Unlink from Windows, then install `LRGEXRestore.exe` fresh into the same home folder (backups are preserved)
 
 ## v1.2.25 — Ed25519 Update Signing + Code Documentation
 - Ed25519 signed updates: private key on dev PC, public key baked into exe
@@ -308,7 +316,7 @@
 
 
 ## v1.2.5
-- Exe renamed to LRGEXSync.exe everywhere (Cargo [[bin]] name)
+- Exe renamed to LRGEXRestore.exe everywhere (Cargo [[bin]] name)
 - Batch updater retry loop for OneDrive locks
 - deploy.ps1 verifies upload size matches local
 - Legacy PS task cleanup on startup
@@ -361,7 +369,7 @@
 ## v1.2.2
 - **Root cause fix**: scheduled task uses canonical home path from registry, not current_exe()
 - **No VBS runner**: task runs exe directly (windows_subsystem=windows, zero console flash)
-- **Single home enforcement**: registry key HKCU\SOFTWARE\LRGEX\FolderSync\HomePath is the ONE source of truth
+- **Single home enforcement**: registry key HKCU\SOFTWARE\LRGEX\Restore\HomePath is the ONE source of truth
 - **Migration**: existing installs auto-promote to registry on first launch
 - **Stray copy protection**: running from non-home path warns user, refuses to retarget task
 - **Uninstall**: clears registry key too
@@ -563,7 +571,7 @@
 - **Folder selection** with left accent bar highlight (clean, not full orange fill).
 - **No console window** — `#![windows_subsystem = "windows"]` hides the terminal completely.
 ### Infrastructure
-- **Scheduled task self-registration** via `schtasks.exe` (not PowerShell Register-ScheduledTask, which fails with Access Denied on some systems). Task name `LRGEX-FolderSync-Rust` to avoid conflicts with old PS task.
+- **Scheduled task self-registration** via `schtasks.exe` (not PowerShell Register-ScheduledTask, which fails with Access Denied on some systems). Task name `LRGEX-Restore-Rust` to avoid conflicts with old PS task.
 - **First-run setup** — pick home folder, app copies itself there, creates `.lrgex-home` marker, relaunches.
 - **Config backward-compatible** — reads PowerShell's PascalCase JSON format (`Junctions`, `SourcePath`, etc.) with BOM stripping.
 - **Right-click context menu** — proper registry structure with display name, icon, and command.

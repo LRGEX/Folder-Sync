@@ -13,7 +13,7 @@ fn main() {
     let key_path = std::path::PathBuf::from(root)
         .join("LRG").join("LRG Data Cloud").join("L.R.G")
         .join("Devoloping").join("Coding").join("Security keys")
-        .join("RUST").join("LRGEX-sync").join("keys").join("signing.key");
+        .join("RUST").join("LRGEX-Restore").join("keys").join("signing.key");
 
     let priv_hex = std::fs::read_to_string(&key_path)
         .unwrap_or_else(|e| panic!("Cannot read signing key at {}: {}", key_path.display(), e));

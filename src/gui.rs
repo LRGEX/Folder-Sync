@@ -150,6 +150,7 @@ slint::slint! {
                     text: root.health-text;
                     color: white;
                     font-weight: 700;
+                    font-size: 11px;
                     vertical-alignment: center;
                     horizontal-alignment: center;
                     overflow: elide;
@@ -182,7 +183,7 @@ slint::slint! {
 
             ScrollView {
                 vertical-stretch: 1;
-                min-height: 200px;
+                min-height: 130px;
                 VerticalBox {
                     for entry[i] in root.folders : Rectangle {
                         height: 38px;

@@ -4,7 +4,7 @@
 
 # LRGEX Restore
 
-**Version 1.2.33**
+**Version 1.2.34**
 
 **Automatic folder backup, versioning, and restore after a Windows reinstall.**
 
@@ -65,10 +65,10 @@ Hours of progress and years of customization disappear because Windows doesn't p
 
 ## Features
 
-- **Mirror sync** — new and changed files sync to your cloud automatically
+- **Automatic backup** — new and changed files back up to your cloud automatically
 - **Snapshot versioning** — every change creates a snapshot. Roll back any folder to any point in the last 90 days
 - **Auto-restore** — after a format, missing folders are restored automatically
-- **Right-click integration** — right-click any folder in Explorer to sync it
+- **Right-click integration** — right-click any folder in Explorer to protect it
 - **Configurable sync interval** — 1 minute or more, your choice
 - **Exclusions** — skip app-locked subfolders that cause false errors
 - **Export/Import** — move your folder list to a new PC
@@ -78,7 +78,7 @@ Hours of progress and years of customization disappear because Windows doesn't p
 ### What happens when you delete files?
 
 - **Delete one file**: it leaves the backup. The old version lives in versioning for 90 days. Does NOT come back on restore.
-- **Delete the entire folder**: if auto-restore is ON, the next sync brings it all back.
+- **Delete the entire folder**: if auto-restore is ON, auto-restore brings it all back.
 
 ---
 

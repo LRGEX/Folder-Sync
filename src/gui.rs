@@ -144,10 +144,12 @@ slint::slint! {
 
             // Health lamp
             Rectangle {
+                horizontal-stretch: 1;
                 height: 28px;
                 background: root.health-color;
                 Text {
                     text: root.health-text;
+                    width: parent.width;
                     color: white;
                     font-weight: 700;
                     font-size: 11px;
@@ -197,6 +199,7 @@ slint::slint! {
                         }
                         TouchArea { clicked => { root.selected-index = root.selected-index == i ? -1 : i; root.source-text = root.selected-index == i ? entry.path : ""; } }
                         HorizontalLayout {
+                            Rectangle { width: 10px; }
                             VerticalLayout {
                                 horizontal-stretch: 1;
                                 alignment: center;
@@ -305,7 +308,7 @@ slint::slint! {
                 }
             }
 
-            Text { text: root.status-text; color: #cb803c; font-size: 12px; height: 28px; }
+            Text { text: root.status-text; color: #cb803c; font-size: 12px; wrap: word-wrap; horizontal-stretch: 1; }
         }
 
         // Tools dropdown overlay
@@ -635,6 +638,11 @@ slint::slint! {
     }
 }
 use slint::VecModel;
+
+fn fmt_dur(secs: f64) -> String {
+    let s = secs as u64;
+    if s >= 60 { format!("{}m {}s", s / 60, s % 60) } else { format!("{}s", s) }
+}
 use crate::{config, sync, health, synclog};
 
 pub fn run() {
@@ -1502,18 +1510,59 @@ Failed: {}", failures.join(", ")));
         });
     }
 
-    // Fast progress check every 3 seconds (just reads a file — no process spawn)
+    // Live progress: 500ms heartbeat with spinner + liveness + folder-list refresh.
     let progress_timer = slint::Timer::default();
     {
         let w = app.as_weak();
         let cache = health_cache.clone();
-        progress_timer.start(slint::TimerMode::Repeated, std::time::Duration::from_secs(3), move || {
-            let progress = synclog::read_progress();
-            if let Some(a) = w.upgrade() {
-                if !progress.is_empty() {
-                    a.set_health_text(format!(" {} ", progress).into());
+        let cfg_path = config::config_path();
+        let mut last_folder_count: Option<usize> = None;
+        let mut spin: usize = 0;
+        progress_timer.start(slint::TimerMode::Repeated, std::time::Duration::from_millis(500), move || {
+            let Some(a) = w.upgrade() else { return };
+
+            // Folder-list refresh: reload only if the junction COUNT changed (folder added/removed).
+            // Watching mtime loops — load_config's portable-path migration re-saves the file
+            // every call for paths it can't contract (e.g. E:\), which flips the mtime.
+            let count = std::fs::read_to_string(&cfg_path).ok()
+                .and_then(|r| serde_json::from_str::<serde_json::Value>(&r).ok())
+                .and_then(|v| v.get("Junctions").and_then(|j| j.as_array()).map(|a| a.len()))
+                .unwrap_or(0);
+            if Some(count) != last_folder_count {
+                last_folder_count = Some(count);
+                refresh_folders(&a);
+            }
+
+            spin = (spin + 1) % 8;
+            const FRAMES: [&str; 8] = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧"];
+
+            match synclog::read_status() {
+                Some(s) if s.phase < 3 => {
+                    // Liveness: heartbeat stale AND pid gone => the sync process died.
+                    let now = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+                    if now.saturating_sub(s.heartbeat) > 15 && !synclog::is_pid_alive(s.pid) {
+                        a.set_health_text(" Sync stopped unexpectedly ".into());
+                        a.set_health_color(slint::Color::from_rgb_u8(200, 30, 30));
+                        return;
+                    }
+                    let pct = if s.bytes_total > 0 { s.bytes_done * 100 / s.bytes_total } else { 0 };
+                    let text = match s.phase {
+                        0 => format!(" {} Scanning {} — {} files ", FRAMES[spin], s.label, s.files_done),
+                        2 => format!(" {} Finalizing {} ", FRAMES[spin], s.label),
+                        _ => format!(
+                            " {} {} — {}%  ({}/{} MB, {:.0} MB/s, {}{}) ",
+                            FRAMES[spin], s.label, pct,
+                            s.bytes_done / 1_048_576, s.bytes_total / 1_048_576,
+                            s.bytes_done as f64 / 1_048_576.0 / s.elapsed,
+                            fmt_dur(s.elapsed),
+                            if s.eta > 0 { format!(", ~{} left", fmt_dur(s.eta as f64)) } else { String::new() }
+                        ),
+                    };
+                    a.set_health_text(text.into());
                     a.set_health_color(slint::Color::from_rgb_u8(200, 140, 0));
-                } else {
+                }
+                _ => {
                     let cached = cache.borrow();
                     a.set_health_text(cached.0.clone());
                     a.set_health_color(cached.1);
@@ -1530,7 +1579,7 @@ Failed: {}", failures.join(", ")));
         health_timer.start(slint::TimerMode::Repeated, std::time::Duration::from_secs(30), move || {
             // Don't overwrite health bar with "OK" while compression/restore is running.
             // The progress timer (every 3s) handles showing the live progress.
-            if !synclog::read_progress().is_empty() {
+            if synclog::read_status().map_or(false, |s| s.phase < 3) {
                 // Still update the cache, but don't touch the health bar
                 let h = health::get_health();
                 let text: slint::SharedString = format!(" {} - {} ", h.label, h.reason).into();
@@ -1714,7 +1763,9 @@ RECOMMENDED: a folder inside a cloud service (OneDrive, Google Drive, etc.) so y
             // Set canonical home in registry — ONE source of truth
             config::set_canonical_home(&home);
 
-            let cfg_path = home.join("junction-config.json");
+            let lrgex_dir = home.join(".lrgex");
+            let _ = std::fs::create_dir_all(&lrgex_dir);
+            let cfg_path = lrgex_dir.join("junction-config.json");
             if !cfg_path.exists() {
                 if let Ok(data) = serde_json::to_string_pretty(&config::Config::default()) {
                     let _ = std::fs::write(&cfg_path, data);

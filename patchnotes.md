@@ -1,5 +1,14 @@
 # Patch Notes — LRGEX Restore
 
+## v1.2.34 — Progress fix + stability
+- Byte-based progress: % = bytes done / bytes total (works for any folder)
+- Fixed: progress frozen at 1% (Drop impl killed heartbeat after first file)
+- Fixed: false "sync stopped unexpectedly" after successful backup
+- Fixed: config migrate-loop hang on un-contractable paths (E:\)
+- Fixed: folder list not refreshing after right-click add (now watches count)
+- Heartbeat: 500ms writer with animated spinner + ETA, never looks frozen
+- Parallel reads (rayon): 139k files 22min -> ~5s warm
+
 ## v1.2.33 — Fix: Unlink now fully clears home state
 - Unlink from Windows now removes the correct marker (`.lrgex/home`) — it was targeting the old pre-migration path (`.lrgex-home`), so the marker survived and re-running the app skipped fresh first-run setup
 - First-run setup now writes the marker to the correct location too

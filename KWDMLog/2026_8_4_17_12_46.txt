@@ -1,0 +1,4 @@
+17:12:46:738# sdkInit ( ver 2.0.33, date Sat Feb 28 18:35:24 2026 )
+17:12:46:739# registerDeviceConnectedCallbackListener
+17:12:46:739# registerDeviceDisconnectedCallbackListener
+17:12:46:739# registerDeviceMessageCallbackListener

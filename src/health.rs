@@ -115,7 +115,7 @@ pub fn get_health() -> HealthResult {
                 }
                 return HealthResult {
                     status: "GREEN".into(),
-                    label: format!("✔ All {} {} protected • Last sync: {}", s.ok, if s.ok == 1 { "folder" } else { "folders" }, friendly_time(&s.last_sync)).into(),
+                    label: format!("✔ {} {} protected • {}", s.ok, if s.ok == 1 { "folder" } else { "folders" }, friendly_time(&s.last_sync)).into(),
                     reason: String::new(),
                 };
             }

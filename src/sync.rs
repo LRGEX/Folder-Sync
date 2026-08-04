@@ -1,6 +1,8 @@
 use crate::config;
+use rayon::prelude::*;
+use std::io::{BufWriter, Read, Write};
 use std::os::windows::process::CommandExt;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, AtomicBool, Ordering};
@@ -14,70 +16,199 @@ pub fn is_dir_empty(path: &str) -> bool {
 
 // ==================== COMPRESSION (tar + zstd) ====================
 
-/// Compress a source directory to a .tar.zst file (ZSTD — fast, good ratio)
-fn compress_folder(source: &Path, dest: &Path, excluded: &[String], total: usize) -> (bool, Vec<String>) {
+const BIG_FILE: u64 = 8 * 1024 * 1024; // stream these instead of preloading
+const BATCH: usize = 2048;             // ~8 MB resident for 4 KB files
+
+pub struct FileEnt {
+    pub path: PathBuf,
+    pub rel: PathBuf,
+    pub size: u64,
+}
+
+/// SINGLE WALK — replaces compute_stats + collect_files.
+/// Returns (entries, total_bytes, count). Uses DirEntry::metadata() which on
+/// Windows is served from the directory enumeration cache (no extra syscall).
+pub fn walk_tree(base: &Path, excluded: &[String]) -> (Vec<FileEnt>, u64, usize) {
+    let mut out = Vec::with_capacity(4096);
+    let mut total = 0u64;
+    walk_inner(base, base, excluded, &mut out, &mut total);
+    let count = out.len();
+    (out, total, count)
+}
+
+fn walk_inner(base: &Path, current: &Path, excluded: &[String], out: &mut Vec<FileEnt>, total: &mut u64) {
+    let entries = match std::fs::read_dir(current) {
+        Ok(e) => e,
+        Err(_) => return,
+    };
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let name_s = name.to_string_lossy();
+        if excluded.iter().any(|e| e.as_str() == name_s.as_ref()) { continue; }
+
+        let ft = match entry.file_type() { Ok(t) => t, Err(_) => continue };
+        if ft.is_symlink() { continue; }
+
+        let path = entry.path();
+        if ft.is_dir() {
+            walk_inner(base, &path, excluded, out, total);
+        } else {
+            let size = entry.metadata().map(|m| m.len()).unwrap_or(0);
+            *total += size;
+            let rel = path.strip_prefix(base).unwrap_or(&path).to_path_buf();
+            out.push(FileEnt { path, rel, size });
+        }
+    }
+}
+
+/// Exact header construction for tar 0.4 (deterministic: mtime/uid/gid zeroed, 0o644).
+fn make_header(size: u64) -> tar::Header {
+    let mut h = tar::Header::new_gnu();
+    h.set_entry_type(tar::EntryType::Regular);
+    h.set_size(size);
+    h.set_mode(0o644);
+    h.set_uid(0);
+    h.set_gid(0);
+    h.set_mtime(0);
+    h.set_cksum();
+    h
+}
+
+fn read_whole(path: &Path, size: u64) -> std::io::Result<Vec<u8>> {
+    let mut f = std::fs::File::open(path)?;
+    let mut buf = Vec::with_capacity(size as usize + 64);
+    f.read_to_end(&mut buf)?;
+    Ok(buf)
+}
+
+/// Compress a source directory to a .tar.zst. Files are read in parallel batches
+/// (rayon) and written to the tar stream in order. `prewalked` lets the caller
+/// share the change-detection walk (one walk total).
+struct ByteReader<R: std::io::Read> {
+    inner: R,
+    progress: crate::synclog::Progress,
+}
+
+impl<R: std::io::Read> std::io::Read for ByteReader<R> {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        let n = self.inner.read(buf)?;
+        if n > 0 { self.progress.tick_bytes(n as u64); }
+        Ok(n)
+    }
+}
+
+pub fn compress_folder(
+    source: &Path,
+    dest: &Path,
+    excluded: &[String],
+    prewalked: Option<(Vec<FileEnt>, u64, usize)>,
+) -> (bool, Vec<String>) {
+    crate::synclog::clear_status(); // start clean — clear any stale status from a previous run
+    let t_all = std::time::Instant::now();
+    let label = source.file_name().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+    let progress = crate::synclog::Progress::new(&label);
+    let heartbeat = progress.spawn_writer();
+    progress.set_phase(0); // walk
+
+    let t_walk = std::time::Instant::now();
+    let (files, total_bytes, count) = match prewalked {
+        Some(w) => w,
+        None => walk_tree(source, excluded),
+    };
+    let walk = t_walk.elapsed();
+    progress.set_totals(count, total_bytes);
+    progress.set_phase(1); // compress
+
     let file = match std::fs::File::create(dest) {
         Ok(f) => f,
         Err(_) => return (false, vec![]),
     };
-    // Level 1 (fastest) + multi-threaded (all CPU cores) — requires zstdmt feature
-    let mut encoder = match zstd::Encoder::new(file, 1) {
+    let writer = BufWriter::with_capacity(4 * 1024 * 1024, file);
+
+    let mut encoder = match zstd::Encoder::new(writer, 1) {
         Ok(e) => e,
         Err(_) => return (false, vec![]),
     };
-    let workers = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4) as u32;
-    let _ = encoder.multithread(workers); // parallel compression; silently falls back to single-thread on error
-    let zstd_encoder = encoder.auto_finish();
-    let mut builder = tar::Builder::new(zstd_encoder);
-    builder.mode(tar::HeaderMode::Deterministic);
+    let threads = std::thread::available_parallelism().map(|n| n.get() as u32).unwrap_or(4);
+    let _ = encoder.multithread(threads);
+    let _ = encoder.include_checksum(false);
+    let mut builder = tar::Builder::new(encoder.auto_finish());
 
+    let t_append = std::time::Instant::now();
     let mut processed = 0usize;
     let mut skipped: Vec<String> = Vec::new();
-    let leaf = source.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
-    add_to_tar(&mut builder, source, source, excluded, &mut processed, &mut skipped, total, &leaf);
 
-    let ok = builder.finish().is_ok();
-    (ok, skipped)
-}
+    for batch in files.chunks(BATCH) {
+        let loaded: Vec<Option<std::io::Result<Vec<u8>>>> = batch
+            .par_iter()
+            .map(|e| {
+                if e.size > BIG_FILE {
+                    None
+                } else {
+                    let r = read_whole(&e.path, e.size);
+                    progress.tick_bytes(e.size);
+                    Some(r)
+                }
+            })
+            .collect();
 
-fn add_to_tar<W: std::io::Write>(
-    builder: &mut tar::Builder<W>,
-    base: &Path,
-    current: &Path,
-    excluded: &[String],
-    processed: &mut usize,
-    skipped: &mut Vec<String>,
-    total: usize,
-    leaf: &str,
-) {
-    if let Ok(entries) = std::fs::read_dir(current) {
-        for entry in entries.flatten() {
-            let name = entry.file_name().to_string_lossy().to_string();
-            if excluded.iter().any(|e| e == &name) { continue; }
-
-            let path = entry.path();
-
-            if path.is_dir() {
-                add_to_tar(builder, base, &path, excluded, processed, skipped, total, leaf);
-            } else {
-                match builder.append_path_with_name(&path, path.strip_prefix(base).unwrap_or(&path)) {
-                    Ok(_) => {
-                        *processed += 1;
-                        if *processed % 500 == 0 {
-                            let pct = (*processed as f64 / total as f64 * 100.0) as usize;
-                            crate::synclog::write_progress(&format!("Compressing {}: {}% ({} files)", leaf, pct, processed));
-                        }
+        for (e, data) in batch.iter().zip(loaded.into_iter()) {
+            let res: std::io::Result<()> = match data {
+                Some(Ok(buf)) => {
+                    let mut h = make_header(buf.len() as u64);
+                    let mut slice: &[u8] = buf.as_slice();
+                    builder.append_data(&mut h, &e.rel, &mut slice)
+                }
+                Some(Err(err)) => Err(err),
+                None => {
+                    match std::fs::File::open(&e.path) {
+                        Ok(f) => match f.metadata() {
+                            Ok(m) => {
+                                let mut h = make_header(m.len());
+                                let mut cr = ByteReader { inner: f, progress: progress.clone() };
+                                builder.append_data(&mut h, &e.rel, &mut cr)
+                            }
+                            Err(err) => Err(err),
+                        },
+                        Err(err) => Err(err),
                     }
-                    Err(_) => {
-                        // Never silent — log each skipped file so the user knows exactly what was missed
-                        let rel = path.strip_prefix(base).unwrap_or(&path).to_string_lossy().to_string();
-                        crate::synclog::write(&format!("  [SKIP] {} (locked/unreadable)", rel));
-                        skipped.push(rel);
-                    }
+                }
+            };
+
+            match res {
+                Ok(()) => {
+                    processed += 1;
+                }
+                Err(_) => {
+                    let rel_s = e.rel.to_string_lossy().to_string();
+                    crate::synclog::write(&format!("  [SKIP] {} (locked/unreadable)", rel_s));
+                    skipped.push(rel_s);
                 }
             }
         }
     }
+    let append = t_append.elapsed();
+
+    progress.set_phase(2); // flush
+    let t_flush = std::time::Instant::now();
+    let mut ok = builder.finish().is_ok();
+    match builder.into_inner() {
+        Ok(mut enc) => { if enc.flush().is_err() { ok = false; } }
+        Err(_) => ok = false,
+    }
+    let flush = t_flush.elapsed();
+    progress.finish(if ok { 3 } else { 4 });
+    let _ = heartbeat.join();
+
+    let mb = total_bytes as f64 / 1_048_576.0;
+    let secs = append.as_secs_f64().max(0.001);
+    crate::synclog::write(&format!(
+        "  [PROFILE] {} files | {:.1} MB | walk={:.2}s | read+compress={:.2}s ({:.0} files/s, {:.1} MB/s) | flush={:.2}s | total={:.2}s | threads={}",
+        count, mb, walk.as_secs_f64(), append.as_secs_f64(),
+        processed as f64 / secs, mb / secs,
+        flush.as_secs_f64(), t_all.elapsed().as_secs_f64(), threads
+    ));
+    (ok, skipped)
 }
 
 /// Decompress a .tar.zst file to a destination directory
@@ -172,29 +303,7 @@ pub fn decompress_archive(archive: &Path, dest: &Path) -> (bool, String) {
     }
 }
 
-/// Compute total size AND file count, skipping excluded names
-fn compute_stats(dir: &Path, excluded: &[String]) -> (u64, usize) {
-    let leaf = dir.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
-    crate::synclog::write_progress(&format!("Scanning {}...", leaf));
-    let mut total = 0u64;
-    let mut count = 0usize;
-    if let Ok(entries) = std::fs::read_dir(dir) {
-        for entry in entries.flatten() {
-            let name = entry.file_name().to_string_lossy().to_string();
-            if excluded.iter().any(|e| e == &name) { continue; }
-            let path = entry.path();
-            if path.is_dir() {
-                let (s, c) = compute_stats(&path, excluded);
-                total += s;
-                count += c;
-            } else {
-                total += entry.metadata().map(|m| m.len()).unwrap_or(0);
-                count += 1;
-            }
-        }
-    }
-    (total, count)
-}
+// compute_stats removed — merged into walk_tree (single shared walk for change-detection + compression)
 
 /// Read stored source stats from sidecar file
 fn read_stored_stats(sidecar: &Path) -> (u64, usize) {
@@ -283,12 +392,14 @@ pub fn sync_pair_to_cloud(source: &str, excluded: &[String], max_versions: i32, 
     // Migration: if old raw backup folder exists, compress it
     let old_backup_folder = config::script_dir().join(&leaf);
     if old_backup_folder.is_dir() && !backup_7z.exists() {
-        let _ = compress_folder(&old_backup_folder, &backup_7z, excluded, 0); // (bool, Vec) — ignore result for migration
+        let _ = compress_folder(&old_backup_folder, &backup_7z, excluded, None); // (bool, Vec) — ignore result for migration
         let _ = std::fs::remove_dir_all(&old_backup_folder);
     }
 
     // Change detection: compare current source stats with stored stats
-    let (current_size, current_count) = compute_stats(Path::new(source), excluded);
+    let walked = walk_tree(Path::new(source), excluded);
+    let current_size = walked.1;
+    let current_count = walked.2;
     let (stored_size, stored_count) = read_stored_stats(&sidecar);
 
     if force || current_size != stored_size || current_count != stored_count || !backup_7z.exists() {
@@ -303,7 +414,7 @@ pub fn sync_pair_to_cloud(source: &str, excluded: &[String], max_versions: i32, 
         // Compress source to temp, then move (atomic-ish)
         // PID-unique temp name prevents corruption if two processes ever collide
         let temp_7z = std::env::temp_dir().join(format!("lrgex_{}_{}.tar.zst.tmp", std::process::id(), leaf));
-        let (compress_ok, skipped) = compress_folder(Path::new(source), &temp_7z, excluded, current_count);
+        let (compress_ok, skipped) = compress_folder(Path::new(source), &temp_7z, excluded, Some(walked));
         if compress_ok {
             let _ = std::fs::remove_file(&backup_7z);
             if std::fs::rename(&temp_7z, &backup_7z).is_ok() {

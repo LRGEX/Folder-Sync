@@ -127,8 +127,19 @@ pub fn load_config() -> Config {
 
     let has_absolute = raw.contains("SourcePath") && raw.contains(":\\");
     if needs_save || has_absolute {
-        crate::synclog::write("  [MIGRATE] Saving portable config");
-        save_config(&cfg);
+        // Idempotent migrate: only write if contraction actually changes the content.
+        // (Otherwise un-contractable paths like E:\ re-save on every load_config call,
+        //  flipping the file mtime and looping any mtime-watching caller.)
+        let mut contracted = cfg.clone();
+        for j in &mut contracted.junctions {
+            j.source_path = crate::pathutil::contract(&j.source_path);
+        }
+        if let Ok(new_raw) = serde_json::to_string_pretty(&contracted) {
+            if new_raw != raw {
+                crate::synclog::write("  [MIGRATE] Saving portable config");
+                let _ = std::fs::write(&path, new_raw);
+            }
+        }
     }
 
     cfg

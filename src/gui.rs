@@ -139,7 +139,7 @@ slint::slint! {
             }
             HorizontalLayout {
                 alignment: center;
-                Text { text: "Your folders, safe across reinstalls"; font-size: 11px; color: #777; }
+                Text { text: "Never lose your folders after reinstalling Windows."; font-size: 11px; color: #777; }
             }
 
             // Health lamp
@@ -151,6 +151,8 @@ slint::slint! {
                     color: white;
                     font-weight: 700;
                     vertical-alignment: center;
+                    horizontal-alignment: center;
+                    overflow: elide;
                 }
             }
 
@@ -206,7 +208,7 @@ slint::slint! {
                                 }
                                 Text {
                                     text: entry.path;
-                                    color: #777;
+                                    color: #5a5a5a;
                                     font-size: 9px;
                                     overflow: elide;
                                 }
@@ -292,12 +294,12 @@ slint::slint! {
                     horizontal-stretch: 1; min-width: 250px; height: 32px;
                     background: rm-hover.has-hover ? #3a3a3a : #2d2d2d;
                     border-radius: 4px;
-                    Text { text: "Remove"; color: #f0f0f0; horizontal-alignment: center; vertical-alignment: center; }
+                    Text { text: "Stop Protecting"; color: #f0f0f0; horizontal-alignment: center; vertical-alignment: center; }
                     rm-hover := TouchArea { clicked => { root.remove-clicked(); } }
                     if rm-hover.has-hover : Rectangle {
                         y: -28px; x: 0px; width: 200px; height: 22px;
                         background: #111; border-radius: 3px; border-width: 1px; border-color: #555;
-                        Text { text: "Remove folder from sync list (not deleted)"; color: #ccc; font-size: 10px; horizontal-alignment: center; vertical-alignment: center; }
+                        Text { text: "Stop protecting this folder — your files are NOT deleted"; color: #ccc; font-size: 10px; horizontal-alignment: center; vertical-alignment: center; }
                     }
                 }
             }
@@ -703,7 +705,7 @@ pub fn run() {
     // Initial state
     refresh_folders(&app);
     let h = health::get_health();
-    app.set_health_text(format!(" {} - {} ", h.label, h.reason).into());
+    app.set_health_text(format!(" {} ", h.label).into());
     app.set_health_color(match h.status.as_str() {
         "GREEN" => slint::Color::from_rgb_u8(76, 175, 80),
         "AMBER" => slint::Color::from_rgb_u8(200, 140, 0),

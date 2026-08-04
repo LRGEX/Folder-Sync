@@ -62,13 +62,27 @@ fn task_running() -> bool {
     false
 }
 
+fn friendly_time(ts: &str) -> String {
+    // stored format: "2026-08-04 06:41:23 AM" -> "6:41 AM"
+    let parts: Vec<&str> = ts.split_whitespace().collect();
+    if parts.len() >= 3 {
+        let mut segs = parts[1].split(':');
+        if let (Some(h), Some(m)) = (segs.next(), segs.next()) {
+            let h = h.trim_start_matches('0');
+            let h = if h.is_empty() { "12" } else { h };
+            return format!("{}:{} {}", h, m, parts[2]);
+        }
+    }
+    ts.to_string()
+}
+
 pub fn get_health() -> HealthResult {
     // 1. Task not registered = RED (sync will not run automatically)
     if !task_exists() {
         return HealthResult {
             status: "RED".into(),
-            label: "Protection off".into(),
-            reason: "Will resume on next launch".into(),
+            label: "Protection off • will resume on next launch".into(),
+            reason: String::new(),
         };
     }
 
@@ -76,8 +90,8 @@ pub fn get_health() -> HealthResult {
     if task_running() {
         return HealthResult {
             status: "AMBER".into(),
-            label: "Protecting".into(),
-            reason: "Backing up your folders".into(),
+            label: "Protecting your folders…".into(),
+            reason: String::new(),
         };
     }
 
@@ -88,21 +102,21 @@ pub fn get_health() -> HealthResult {
                 if s.fail > 0 {
                     return HealthResult {
                         status: "RED".into(),
-                        label: "Needs attention".into(),
-                        reason: format!("{} folder(s) failed", s.fail),
+                        label: format!("⚠ Needs attention • {} {} failed", s.fail, if s.fail == 1 { "folder" } else { "folders" }).into(),
+                        reason: String::new(),
                     };
                 }
                 if s.restored > 0 {
                     return HealthResult {
                         status: "GREEN".into(),
-                        label: format!("Restored {}", s.restored).into(),
-                        reason: format!("auto-restored: {}", s.restored_names),
+                        label: format!("✔ Restored {} {} • auto-restored: {}", s.restored, if s.restored == 1 { "folder" } else { "folders" }, s.restored_names).into(),
+                        reason: String::new(),
                     };
                 }
                 return HealthResult {
                     status: "GREEN".into(),
-                    label: "All protected".into(),
-                    reason: format!("{} folder(s) - last: {}", s.ok, s.last_sync),
+                    label: format!("✔ All {} {} protected • Last sync: {}", s.ok, if s.ok == 1 { "folder" } else { "folders" }, friendly_time(&s.last_sync)).into(),
+                    reason: String::new(),
                 };
             }
         }
@@ -112,7 +126,7 @@ pub fn get_health() -> HealthResult {
     // 4. Task registered but hasn't run yet = AMBER (not green!)
     HealthResult {
         status: "AMBER".into(),
-        label: "Starting up".into(),
-        reason: "Preparing your first backup".into(),
+        label: "Starting up — preparing your first backup".into(),
+        reason: String::new(),
     }
 }

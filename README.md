@@ -10,16 +10,15 @@
 
 **Portable • Open Source • MIT Licensed**
 
+
+
+
 </div>
 
 <table align="center">
 <tr>
 <td align="center">
-<img src="https://github.com/user-attachments/assets/2f9b086f-dc8e-4b40-b8a7-ac8943853196" width="300">
-</td>
-<td width="20"></td>
-<td align="center">
-<img src="https://github.com/user-attachments/assets/67b2ae26-f8ca-48c2-849a-9018274201db" width="300">
+<img width="1377" height="774" alt="Recording 2026-08-04 064951 (2)" src="https://github.com/user-attachments/assets/c12d3e0b-6166-4692-adb4-5af26ed3025c" />
 </td>
 </tr>
 </table>

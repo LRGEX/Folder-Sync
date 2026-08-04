@@ -20,11 +20,13 @@ fn compress_folder(source: &Path, dest: &Path, excluded: &[String], total: usize
         Ok(f) => f,
         Err(_) => return (false, vec![]),
     };
-    // Level 1 (fastest) + multi-threaded (all CPU cores)
-    let encoder = match zstd::Encoder::new(file, 1) {
+    // Level 1 (fastest) + multi-threaded (all CPU cores) — requires zstdmt feature
+    let mut encoder = match zstd::Encoder::new(file, 1) {
         Ok(e) => e,
         Err(_) => return (false, vec![]),
     };
+    let workers = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4) as u32;
+    let _ = encoder.multithread(workers); // parallel compression; silently falls back to single-thread on error
     let zstd_encoder = encoder.auto_finish();
     let mut builder = tar::Builder::new(zstd_encoder);
     builder.mode(tar::HeaderMode::Deterministic);

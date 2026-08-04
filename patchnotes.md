@@ -1,5 +1,9 @@
 # Patch Notes — LRGEX Restore
 
+## v1.2.32 — Faster compression
+- Multi-threaded zstd: compression now uses all CPU cores (was single-threaded) — large folders back up much faster
+- Release build re-optimized: fat LTO + codegen-units = 1 (faster runtime, smaller exe)
+
 ## v1.2.31 — UI tweaks
 - Right-click menu text: "Restore folder (LRGEX)" → "Add to LRGEX Restore" (the action adds the folder for backup, doesn't restore it)
 - Title under logo: "LRGEX Restore" → "Restore" (larger hero font)

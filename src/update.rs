@@ -2,7 +2,7 @@ use serde::Deserialize;
 use std::io::Read;
 use ed25519_dalek::{VerifyingKey, Verifier, Signature};
 
-const MANIFEST_URL: &str = "https://download.lrgex.com/app/rst/folder-sync/latest.json";
+const MANIFEST_URL: &str = "https://download.lrgex.com/app/rst/lrgex-restore/latest.json";
 
 // Public key from the immutable anchor file (signing.pub).
 // This is the ONE source of truth — derived from the private key, committed to git.
@@ -57,7 +57,7 @@ pub fn check_for_updates() {
         return;
     }
 
-    let temp_exe = std::env::temp_dir().join("folder_sync_update.exe");
+    let temp_exe = std::env::temp_dir().join("lrgex_restore_update.exe");
 
     let resp = match ureq::get(&format!("{}?v={}", manifest.platforms.windows.url, manifest.version))
         .timeout(std::time::Duration::from_secs(120))

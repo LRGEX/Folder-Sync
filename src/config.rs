@@ -46,10 +46,7 @@ pub fn script_dir() -> PathBuf {
     exe.parent().unwrap_or(std::path::Path::new(".")).to_path_buf()
 }
 
-
-/// Internal state directory — keeps saves folder clean.
 /// Internal state directory — all config/log/marker files live here.
-/// Keeps the saves folder clean: only exe, backup/, and _versions/ visible.
 /// Hidden folder (.lrgex), auto-created on first access.
 pub fn data_dir() -> PathBuf {
     let d = script_dir().join(".lrgex");
@@ -57,9 +54,7 @@ pub fn data_dir() -> PathBuf {
     d
 }
 
-/// One-time migration: move scattered root files into .lrgex/
 /// One-time migration: move scattered root files into .lrgex/ subfolder.
-/// Runs on every launch — idempotent (only moves files that exist at root).
 pub fn migrate_to_data_dir() {
     let dd = data_dir();
     let sd = script_dir();
@@ -80,13 +75,12 @@ pub fn migrate_to_data_dir() {
         }
     }
 }
+
 pub fn config_path() -> PathBuf {
     data_dir().join("junction-config.json")
 }
 
-/// Save config with path contraction.
-/// Converts absolute paths to portable form (%USERPROFILE%, %LOCALAPPDATA%, etc.)
-/// so the config works on any machine regardless of username.
+/// Save config with path contraction (absolute → portable).
 pub fn save_config(cfg: &Config) {
     let path = config_path();
     let mut cfg = cfg.clone();
@@ -99,9 +93,6 @@ pub fn save_config(cfg: &Config) {
 }
 
 /// Load config with path expansion and healing.
-/// 1. Expand portable paths (%USERPROFILE%, %LOCALAPPDATA%, etc.) to absolute
-/// 2. Heal broken paths (different username after format → current user)
-/// 3. Auto-migrate absolute paths to portable format on save
 pub fn load_config() -> Config {
     let path = config_path();
     let raw = match std::fs::read_to_string(&path) {
@@ -147,7 +138,7 @@ pub fn is_home() -> bool {
     data_dir().join("home").exists()
 }
 
-const REG_PATH: &str = r"SOFTWARErgexfoldersync";
+const REG_PATH: &str = r"SOFTWARE\LRGEX\Restore";
 
 pub fn canonical_home() -> Option<PathBuf> {
     winreg::RegKey::predef(winreg::enums::HKEY_CURRENT_USER)
@@ -166,11 +157,10 @@ pub fn set_canonical_home(path: &Path) {
 
 pub fn clear_canonical_home() {
     if let Ok(parent) = winreg::RegKey::predef(winreg::enums::HKEY_CURRENT_USER)
-        .open_subkey_with_flags(r"SOFTWARErgex", winreg::enums::KEY_WRITE) {
-        let _ = parent.delete_subkey_all("FolderSync");
+        .open_subkey_with_flags(r"SOFTWARE\LRGEX", winreg::enums::KEY_WRITE) {
+        let _ = parent.delete_subkey_all("Restore");
     }
 }
-
 
 #[allow(dead_code)]
 pub fn pair_cloud_path(source: &str) -> PathBuf {

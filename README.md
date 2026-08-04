@@ -2,7 +2,7 @@
 
 <img src="assets/logo.png" alt="LRGEX Logo" width="220">
 
-# Folder Sync
+# LRGEX Restore
 
 **Version 1.2.29**
 
@@ -38,14 +38,14 @@ Your application settings? **Gone.**
 
 Hours of progress and years of customization disappear because Windows doesn't protect those folders.
 
-**Folder Sync remembers them, keeps them synchronized, and restores them to their exact original locations after you reinstall Windows.**
+**LRGEX Restore remembers them, keeps them synchronized, and restores them to their exact original locations after you reinstall Windows.**
 
 ---
 
 ## How it works
 
 1. **Choose a folder** — game saves, app settings, projects, or anything important.
-2. **Folder Sync watches it** — changes are compressed and synchronized automatically.
+2. **LRGEX Restore watches it** — changes are compressed and synchronized automatically.
 3. **Reinstall Windows** — without worrying about lost files.
 4. **Restore with one click** — every folder returns to its original location automatically.
 
@@ -53,9 +53,9 @@ Hours of progress and years of customization disappear because Windows doesn't p
 
 ---
 
-## Why Folder Sync?
+## Why LRGEX Restore?
 
-- **One-click protection** — right-click any folder and choose **"Sync folder (LRGEX)"**.
+- **One-click protection** — right-click any folder and choose **"Restore folder (LRGEX)"**.
 - **Works with any cloud** — OneDrive, Google Drive, Dropbox, Mega, iCloud, NAS, Syncthing, or even a local drive.
 - **Automatic synchronization** — changes are backed up in the background.
 - **Built-in version history** — restore previous snapshots whenever you need them.
@@ -85,11 +85,11 @@ Hours of progress and years of customization disappear because Windows doesn't p
 
 ## Installation
 
-1. Download `LRGEXSync.exe`
+1. Download `LRGEXRestore.exe`
 2. Run it — pick a **home folder** inside your cloud service (OneDrive, Google Drive, etc.) so your files survive a format. Local folder works too, but won't survive a format.
 3. Open the app from the home folder
 4. Go to **Tools → Right-Click Sync** to enable the right-click menu
-5. Right-click any folder you want to protect — select **"Sync folder (LRGEX)"**
+5. Right-click any folder you want to protect — select **"Restore folder (LRGEX)"**
 
 Your folders are now backed up continuously.
 
@@ -98,7 +98,7 @@ Your folders are now backed up continuously.
 ## Restore after a format
 
 1. Reinstall your cloud service and let it download
-2. Open `LRGEXSync.exe` from your home folder
+2. Open `LRGEXRestore.exe` from your home folder
 3. Click **"Restore Saved"** — or let auto-restore handle it automatically
 
 Every folder goes back to its exact original path.

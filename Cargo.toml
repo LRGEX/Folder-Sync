@@ -1,10 +1,10 @@
 [package]
-name = "folder_sync"
+name = "lrgex_restore"
 version = "1.2.29"
 edition = "2021"
 
 [[bin]]
-name = "LRGEXSync"
+name = "LRGEXRestore"
 path = "src/main.rs"
 
 [dependencies]

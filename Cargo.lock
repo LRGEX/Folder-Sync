@@ -1337,27 +1337,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3f9eec918d3f24069decb9af1554cad7c880e2da24a9afd88aca000531ab82c1"
 
 [[package]]
-name = "folder_sync"
-version = "1.2.29"
-dependencies = [
- "chrono",
- "ed25519-dalek",
- "hex",
- "rand 0.8.7",
- "rfd",
- "serde",
- "serde_json",
- "sha2",
- "slint",
- "tar",
- "ureq",
- "windows-sys 0.59.0",
- "winreg",
- "winres",
- "zstd",
-]
-
-[[package]]
 name = "foldhash"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2647,6 +2626,27 @@ name = "log"
 version = "0.4.33"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0ceec5bc11778974d1bcb055b18002eba7f4b3518b6a0081b3af5f21666da9ad"
+
+[[package]]
+name = "lrgex_restore"
+version = "1.2.29"
+dependencies = [
+ "chrono",
+ "ed25519-dalek",
+ "hex",
+ "rand 0.8.7",
+ "rfd",
+ "serde",
+ "serde_json",
+ "sha2",
+ "slint",
+ "tar",
+ "ureq",
+ "windows-sys 0.59.0",
+ "winreg",
+ "winres",
+ "zstd",
+]
 
 [[package]]
 name = "lyon_algorithms"

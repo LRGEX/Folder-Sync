@@ -34,7 +34,7 @@ fn main() {
         use windows_sys::Win32::System::Threading::CreateMutexW;
         use windows_sys::Win32::Foundation::GetLastError;
         use std::os::windows::ffi::OsStrExt;
-        let sync_mutex: Vec<u16> = std::ffi::OsStr::new("LRGEXSyncSyncLock")
+        let sync_mutex: Vec<u16> = std::ffi::OsStr::new("LRGEXRestoreSyncLock")
             .encode_wide().chain(std::iter::once(0)).collect();
         unsafe {
             let handle = CreateMutexW(std::ptr::null(), 0, sync_mutex.as_ptr());
@@ -93,7 +93,7 @@ fn main() {
     use windows_sys::Win32::System::Threading::CreateMutexW;
     use windows_sys::Win32::Foundation::GetLastError;
     use std::os::windows::ffi::OsStrExt;
-    let mutex_name: Vec<u16> = std::ffi::OsStr::new("LRGEXSyncSingleInstance")
+    let mutex_name: Vec<u16> = std::ffi::OsStr::new("LRGEXRestoreSingleInstance")
         .encode_wide().chain(std::iter::once(0)).collect();
     unsafe {
         let handle = CreateMutexW(std::ptr::null(), 0, mutex_name.as_ptr());

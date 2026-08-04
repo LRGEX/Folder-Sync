@@ -29,7 +29,7 @@ slint::slint! {
     }
 
     export component App inherits Window {
-        title: "LRGEX Folder Sync " + root.app-version;
+        title: "LRGEX Restore " + root.app-version;
         icon: @image-url("../assets/app-icon.png");
         preferred-width: 560px;
         preferred-height: 700px;
@@ -130,7 +130,7 @@ slint::slint! {
             }
             HorizontalLayout {
                 alignment: center;
-                Text { text: "Folder Sync"; font-size: 24px; font-weight: 900; color: #b3b3b3; letter-spacing: 1px; }
+                Text { text: "LRGEX Restore"; font-size: 24px; font-weight: 900; color: #b3b3b3; letter-spacing: 1px; }
             }
             HorizontalLayout {
                 alignment: center;
@@ -576,7 +576,7 @@ slint::slint! {
                     }
 
                     Text {
-                        text: "LRGEX Folder Sync";
+                        text: "LRGEX Restore";
                         font-size: 20px; font-weight: 900; color: #b3b3b3;
                         horizontal-alignment: center;
                     }
@@ -651,7 +651,7 @@ pub fn run() {
                 .unwrap_or_else(|| "an unknown location".to_string());
             rfd::MessageDialog::new()
                 .set_title("Already Installed")
-                .set_description(&format!("Folder Sync is already installed at:\n{}\n\nOpen it from there.\n\nTo move: Tools -> Unlink from Windows first, then run this exe again.", existing))
+                .set_description(&format!("LRGEX Restore is already installed at:\n{}\n\nOpen it from there.\n\nTo move: Tools -> Unlink from Windows first, then run this exe again.", existing))
                 .set_buttons(rfd::MessageButtons::Ok)
                 .show();
             return;
@@ -1103,7 +1103,7 @@ Failed: {}", failures.join(", ")));
             j.source_path = crate::pathutil::contract(&j.source_path);
         }
         if let Some(path) = rfd::FileDialog::new()
-            .set_file_name("folder-sync-config.json")
+            .set_file_name("lrgex-restore-config.json")
             .add_filter("JSON", &["json"])
             .save_file()
         {
@@ -1452,7 +1452,7 @@ Failed: {}", failures.join(", ")));
                         let _ = std::fs::remove_file(config::script_dir().join(".lrgex-home"));
                         config::clear_canonical_home();
                         let bat_path = std::env::temp_dir().join("lrgex-cleanup.bat");
-                        let bat = "@echo off\r\nping 127.0.0.1 -n 3 > nul\r\nschtasks /Delete /TN \"LRGEX-FolderSync-Rust\" /F >nul 2>&1\r\nreg delete \"HKCU\\Software\\Classes\\Directory\\shell\\LRGEXSync\" /f >nul 2>&1\r\ndel \"%~f0\"\r\n";
+                        let bat = "@echo off\r\nping 127.0.0.1 -n 3 > nul\r\nschtasks /Delete /TN \"LRGEX-Restore-Rust\" /F >nul 2>&1\r\nreg delete \"HKCU\\Software\\Classes\\Directory\\shell\\LRGEXRestore\" /f >nul 2>&1\r\ndel \"%~f0\"\r\n";
                         let _ = std::fs::write(&bat_path, bat);
                         rfd::MessageDialog::new()
                             .set_title("Unlinked")
@@ -1673,7 +1673,7 @@ fn run_save_migration(w: &slint::Weak<App>) {
 fn setup_home() {
     rfd::MessageDialog::new()
         .set_title("First Run Setup")
-        .set_description("Pick the folder where LRGEX Folder Sync will live.
+        .set_description("Pick the folder where LRGEX Restore will live.
 
 RECOMMENDED: a folder inside a cloud service (OneDrive, Google Drive, etc.) so your backups survive a PC format.")
         .set_buttons(rfd::MessageButtons::Ok)
@@ -1687,10 +1687,10 @@ RECOMMENDED: a folder inside a cloud service (OneDrive, Google Drive, etc.) so y
         if let Ok(exe) = std::env::current_exe() {
             let exe_name = exe.file_name()
                 .map(|n| n.to_string_lossy().to_string())
-                .unwrap_or_else(|| "LRGEXSync.exe".into());
+                .unwrap_or_else(|| "LRGEXRestore.exe".into());
             let dest = home.join(&exe_name);
             let _ = std::fs::copy(&exe, &dest);
-            let _ = std::fs::write(home.join(".lrgex-home"), "LRGEX Folder Sync Home");
+            let _ = std::fs::write(home.join(".lrgex-home"), "LRGEX Restore Home");
             // Set canonical home in registry — ONE source of truth
             config::set_canonical_home(&home);
 
@@ -1748,7 +1748,7 @@ fn update_rc_label(app: &App) {
 
 fn is_rightclick_enabled() -> bool {
     winreg::RegKey::predef(winreg::enums::HKEY_CURRENT_USER)
-        .open_subkey(r"Software\Classes\Directory\shell\LRGEXSync").is_ok()
+        .open_subkey(r"Software\Classes\Directory\shell\LRGEXRestore").is_ok()
 }
 
 fn toggle_rightclick(enable: bool) {
@@ -1759,9 +1759,9 @@ fn toggle_rightclick(enable: bool) {
         .map(|(k,_)| k);
     if enable {
         if let Ok(shell) = shell {
-            // Create LRGEXSync key with display name
-            if let Ok((key,_)) = shell.create_subkey("LRGEXSync") {
-                let _ = key.set_value("", &"Sync folder (LRGEX)");
+            // Create LRGEXRestore key with display name
+            if let Ok((key,_)) = shell.create_subkey("LRGEXRestore") {
+                let _ = key.set_value("", &"Restore folder (LRGEX)");
                 // Icon = the exe itself (icon embedded via winres)
                 let exe = std::env::current_exe()
                     .map(|p| p.to_string_lossy().to_string())
@@ -1778,7 +1778,7 @@ fn toggle_rightclick(enable: bool) {
         }
     } else {
         if let Ok(shell) = shell {
-            let _ = shell.delete_subkey_all("LRGEXSync");
+            let _ = shell.delete_subkey_all("LRGEXRestore");
         }
     }
 

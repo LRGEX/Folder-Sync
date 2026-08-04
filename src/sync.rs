@@ -534,7 +534,7 @@ pub fn register_sync_task(interval_minutes: i32) -> bool {
         Some(h) => h,
         None => return false,
     };
-    let exe = home.join("LRGEXSync.exe");
+    let exe = home.join("LRGEXRestore.exe");
     let task_cmd = format!("\"{}\" -sync", exe.to_string_lossy());
 
     // schtasks /SC MINUTE max is 1439, /SC HOURLY max is 23.
@@ -551,7 +551,7 @@ pub fn register_sync_task(interval_minutes: i32) -> bool {
     match Command::new("schtasks.exe")
         .args([
             "/Create",
-            "/TN", "LRGEX-FolderSync-Rust",
+            "/TN", "LRGEX-Restore-Rust",
             "/TR", &task_cmd,
             "/SC", schedule,
             "/MO", &modifier,

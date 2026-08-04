@@ -16,6 +16,9 @@ sync.log
 sync-status.json
 .lrgex-home
 
+# Local planning/docs (not for public repo)
+doc/
+
 # OS junk
 Thumbs.db
 desktop.ini

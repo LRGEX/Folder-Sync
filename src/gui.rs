@@ -1467,6 +1467,7 @@ Failed: {}", failures.join(", ")));
                 }
                 3 => { // Unlink from Windows
                     if val.trim().eq_ignore_ascii_case("yes") {
+                        let _ = std::fs::remove_file(config::data_dir().join("home"));
                         let _ = std::fs::remove_file(config::script_dir().join(".lrgex-home"));
                         config::clear_canonical_home();
                         let bat_path = std::env::temp_dir().join("lrgex-cleanup.bat");
@@ -1708,7 +1709,8 @@ RECOMMENDED: a folder inside a cloud service (OneDrive, Google Drive, etc.) so y
                 .unwrap_or_else(|| "LRGEXRestore.exe".into());
             let dest = home.join(&exe_name);
             let _ = std::fs::copy(&exe, &dest);
-            let _ = std::fs::write(home.join(".lrgex-home"), "LRGEX Restore Home");
+            let _ = std::fs::create_dir_all(home.join(".lrgex"));
+            let _ = std::fs::write(home.join(".lrgex").join("home"), "LRGEX Restore Home");
             // Set canonical home in registry — ONE source of truth
             config::set_canonical_home(&home);
 

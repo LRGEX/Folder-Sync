@@ -4,7 +4,7 @@
 
 # LRGEX Restore
 
-**Version 1.2.32**
+**Version 1.2.33**
 
 **Automatic folder backup, versioning, and restore after a Windows reinstall.**
 

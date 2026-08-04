@@ -1,5 +1,9 @@
 # Patch Notes — LRGEX Restore
 
+## v1.2.33 — Fix: Unlink now fully clears home state
+- Unlink from Windows now removes the correct marker (`.lrgex/home`) — it was targeting the old pre-migration path (`.lrgex-home`), so the marker survived and re-running the app skipped fresh first-run setup
+- First-run setup now writes the marker to the correct location too
+
 ## v1.2.32 — Faster compression
 - Multi-threaded zstd: compression now uses all CPU cores (was single-threaded) — large folders back up much faster
 - Release build re-optimized: fat LTO + codegen-units = 1 (faster runtime, smaller exe)

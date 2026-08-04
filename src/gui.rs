@@ -130,7 +130,7 @@ slint::slint! {
             }
             HorizontalLayout {
                 alignment: center;
-                Text { text: "LRGEX Restore"; font-size: 24px; font-weight: 900; color: #b3b3b3; letter-spacing: 1px; }
+                Text { text: "Restore"; font-size: 32px; font-weight: 900; color: #b3b3b3; letter-spacing: 1px; }
             }
             HorizontalLayout {
                 alignment: center;
@@ -1761,7 +1761,7 @@ fn toggle_rightclick(enable: bool) {
         if let Ok(shell) = shell {
             // Create LRGEXRestore key with display name
             if let Ok((key,_)) = shell.create_subkey("LRGEXRestore") {
-                let _ = key.set_value("", &"Restore folder (LRGEX)");
+                let _ = key.set_value("", &"Add to LRGEX Restore");
                 // Icon = the exe itself (icon embedded via winres)
                 let exe = std::env::current_exe()
                     .map(|p| p.to_string_lossy().to_string())

@@ -1,5 +1,9 @@
 # Patch Notes — LRGEX Restore
 
+## v1.2.31 — UI tweaks
+- Right-click menu text: "Restore folder (LRGEX)" → "Add to LRGEX Restore" (the action adds the folder for backup, doesn't restore it)
+- Title under logo: "LRGEX Restore" → "Restore" (larger hero font)
+
 ## v1.2.30 — Renamed to LRGEX Restore
 - Project renamed to LRGEX Restore
 - New exe name: `LRGEXRestore.exe`

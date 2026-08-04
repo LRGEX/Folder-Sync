@@ -4,7 +4,7 @@
 
 # LRGEX Restore
 
-**Version 1.2.30**
+**Version 1.2.31**
 
 **Automatic folder backup, versioning, and restore after a Windows reinstall.**
 
@@ -55,7 +55,7 @@ Hours of progress and years of customization disappear because Windows doesn't p
 
 ## Why LRGEX Restore?
 
-- **One-click protection** — right-click any folder and choose **"Restore folder (LRGEX)"**.
+- **One-click protection** — right-click any folder and choose **"Add to LRGEX Restore"**.
 - **Works with any cloud** — OneDrive, Google Drive, Dropbox, Mega, iCloud, NAS, Syncthing, or even a local drive.
 - **Automatic synchronization** — changes are backed up in the background.
 - **Built-in version history** — restore previous snapshots whenever you need them.
@@ -89,7 +89,7 @@ Hours of progress and years of customization disappear because Windows doesn't p
 2. Run it — pick a **home folder** inside your cloud service (OneDrive, Google Drive, etc.) so your files survive a format. Local folder works too, but won't survive a format.
 3. Open the app from the home folder
 4. Go to **Tools → Right-Click Sync** to enable the right-click menu
-5. Right-click any folder you want to protect — select **"Restore folder (LRGEX)"**
+5. Right-click any folder you want to protect — select **"Add to LRGEX Restore"**
 
 Your folders are now backed up continuously.
 
